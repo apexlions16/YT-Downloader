@@ -170,36 +170,73 @@ jobs:
           cd release
           sha256sum * | tee SHA256SUMS.txt
 
-      - name: Bmobil 0.3.1 sürümünü yayımla
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v0.3.1
-          name: Bmobil 0.3.1 Android Oynatma Hotfix
-          target_commitish: ${{ github.sha }}
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-          body: |
-            ## Bmobil 0.3.1 Android Oynatma Hotfix
+      - name: Sürüm notlarını hazırla
+        shell: bash
+        run: |
+          cat > release-notes.md <<'EOF'
+          ## Bmobil 0.3.1 Android Oynatma Hotfix
 
-            - Şifreli videolar oynatma öncesinde güvenli geçici dosyaya hazırlanır ve hazırlık durumu görünür.
-            - Oynatıcı yalnızca Android ana iş parçacığından açılır.
-            - Yerel dosya ve MediaStore URI doğrulaması eklendi.
-            - Media3 yerel medya kaynağı ve ayrıntılı hata ekranı eklendi.
-            - Android için H.264/AAC uyumlu indirme seçimi önceliklendirildi.
-            - Bmobil ve Bmobil Developer APK'ları dahildir.
-          files: |
-            release/Bmobil-0.3.1.apk
-            release/Bmobil-Developer-0.3.1.apk
-            release/SHA256SUMS.txt
-          fail_on_unmatched_files: true
+          - Şifreli videolar oynatma öncesinde güvenli geçici dosyaya hazırlanır ve hazırlık durumu görünür.
+          - Oynatıcı yalnızca Android ana iş parçacığından açılır.
+          - Yerel dosya ve MediaStore URI doğrulaması eklendi.
+          - Media3 yerel medya kaynağı ve ayrıntılı hata ekranı eklendi.
+          - Android için H.264/AAC uyumlu indirme seçimi önceliklendirildi.
+          - Bmobil ve Bmobil Developer APK'ları dahildir.
+          EOF
+
+      - name: Bmobil 0.3.1 sürümünü oluştur veya güncelle
+        id: release-yayimla
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -o pipefail
+          {
+            if gh release view v0.3.1 >/dev/null 2>&1; then
+              echo "Mevcut v0.3.1 Release güncelleniyor."
+              gh release edit v0.3.1 \
+                --title "Bmobil 0.3.1 Android Oynatma Hotfix" \
+                --notes-file release-notes.md
+            else
+              echo "Yeni v0.3.1 Release oluşturuluyor."
+              gh release create v0.3.1 \
+                --target "$GITHUB_SHA" \
+                --title "Bmobil 0.3.1 Android Oynatma Hotfix" \
+                --notes-file release-notes.md
+            fi
+
+            gh release upload v0.3.1 \
+              release/Bmobil-0.3.1.apk \
+              release/Bmobil-Developer-0.3.1.apk \
+              release/SHA256SUMS.txt \
+              --clobber
+
+            gh release view v0.3.1 --json url,tagName,name,isDraft,isPrerelease
+          } 2>&1 | tee release.log
+
+      - name: Release günlüğünü yükle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-Release-Gunlugu-0.3.1
+          path: release.log
+          if-no-files-found: warn
 
       - name: Geliştirme günlüğüne Release bağlantısı yaz
+        if: steps.release-yayimla.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           gh issue comment 6 --body "✅ **Bmobil 0.3.1 Android oynatma hotfix Release yayımlandı.**\n\nİki APK ve SHA-256 listesi: https://github.com/${{ github.repository }}/releases/tag/v0.3.1\n\nAna dal Action çalışması: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Release sonucunu doğrula
+        if: steps.release-yayimla.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "GitHub Release yayımlanamadı. Ayrıntılar Android-Release-Gunlugu-0.3.1 artefaktındadır."
+          exit 1
 
   main-ci-sonucunu-kaydet:
     name: Ana dal CI ve Release sonucunu kaydet
@@ -222,6 +259,13 @@ jobs:
           name: Android-Derleme-Gunlugu-0.3.1
           path: ci-gunluk
 
+      - name: Release günlüğünü al
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: Android-Release-Gunlugu-0.3.1
+          path: ci-release
+
       - name: Ana dal sonucunu okunabilir dosyaya yaz
         shell: bash
         run: |
@@ -232,6 +276,9 @@ jobs:
             echo "android_result=${{ needs.android-uygulamalarini-derle.result }}"
             echo "release_result=${{ needs.github-release-olustur.result }}"
             echo "commit=${{ github.sha }}"
+            echo
+            echo "===== release.log ====="
+            cat ci-release/release.log 2>/dev/null || true
             echo
             echo "===== android-derleme.log son 120 satır ====="
             tail -n 120 ci-gunluk/android-derleme.log 2>/dev/null || true
