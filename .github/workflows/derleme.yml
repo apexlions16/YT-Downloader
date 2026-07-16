@@ -159,24 +159,36 @@ jobs:
             windows-sha256.txt
           if-no-files-found: warn
 
-      - name: BPC paketlerini yükle
+      - name: BPC MSI paketini yükle
         if: steps.windows-derleme.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: BPC-0.3.0
-          path: |
-            dagitim/windows/BPC-0.3.0.msi
-            dagitim/windows/BPC-0.3.0.exe
+          name: BPC-MSI-0.3.0
+          path: dagitim/windows/BPC-0.3.0.msi
           if-no-files-found: error
 
-      - name: BPC Developer paketlerini yükle
+      - name: BPC EXE paketini yükle
         if: steps.windows-derleme.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: BPC-Developer-0.3.0
-          path: |
-            dagitim/windows/BPC-Developer-0.3.0.msi
-            dagitim/windows/BPC-Developer-0.3.0.exe
+          name: BPC-EXE-0.3.0
+          path: dagitim/windows/BPC-0.3.0.exe
+          if-no-files-found: error
+
+      - name: BPC Developer MSI paketini yükle
+        if: steps.windows-derleme.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: BPC-Developer-MSI-0.3.0
+          path: dagitim/windows/BPC-Developer-0.3.0.msi
+          if-no-files-found: error
+
+      - name: BPC Developer EXE paketini yükle
+        if: steps.windows-derleme.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: BPC-Developer-EXE-0.3.0
+          path: dagitim/windows/BPC-Developer-0.3.0.exe
           if-no-files-found: error
 
       - name: Windows derleme sonucunu doğrula
@@ -208,16 +220,28 @@ jobs:
           name: Bmobil-Developer-0.3.0
           path: release
 
-      - name: BPC paketlerini al
+      - name: BPC MSI paketini al
         uses: actions/download-artifact@v4
         with:
-          name: BPC-0.3.0
+          name: BPC-MSI-0.3.0
           path: release
 
-      - name: BPC Developer paketlerini al
+      - name: BPC EXE paketini al
         uses: actions/download-artifact@v4
         with:
-          name: BPC-Developer-0.3.0
+          name: BPC-EXE-0.3.0
+          path: release
+
+      - name: BPC Developer MSI paketini al
+        uses: actions/download-artifact@v4
+        with:
+          name: BPC-Developer-MSI-0.3.0
+          path: release
+
+      - name: BPC Developer EXE paketini al
+        uses: actions/download-artifact@v4
+        with:
+          name: BPC-Developer-EXE-0.3.0
           path: release
 
       - name: SHA-256 listesi oluştur
