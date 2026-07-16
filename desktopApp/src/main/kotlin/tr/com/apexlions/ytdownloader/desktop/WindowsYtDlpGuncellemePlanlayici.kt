@@ -1,5 +1,12 @@
 package tr.com.apexlions.ytdownloader.desktop
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import java.io.BufferedInputStream
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -13,6 +20,7 @@ import java.time.Duration
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.zip.ZipInputStream
 
 object WindowsYtDlpGuncellemePlanlayici {
     private val baslatildi = AtomicBoolean(false)
@@ -22,12 +30,11 @@ object WindowsYtDlpGuncellemePlanlayici {
 
     fun baslat() {
         if (!baslatildi.compareAndSet(false, true)) return
-
         zamanlayici.scheduleWithFixedDelay(
             {
-                runCatching { WindowsYtDlpGuncelleyici().guncelle() }
-                    .onSuccess { sonuc -> println("[YT İndirici] $sonuc") }
-                    .onFailure { hata -> System.err.println("[YT İndirici] yt-dlp güncellenemedi; mevcut sürüm korunuyor: ${hata.message}") }
+                runCatching { WindowsMotorKurucusu().hazirla() }
+                    .onSuccess { println("[YT İndirici] Motor bileşenleri güncel.") }
+                    .onFailure { hata -> System.err.println("[YT İndirici] Motor güncellenemedi; mevcut bileşenler korunuyor: ${hata.message}") }
             },
             0,
             6,
@@ -36,125 +43,203 @@ object WindowsYtDlpGuncellemePlanlayici {
     }
 }
 
-class WindowsYtDlpGuncelleyici(
+data class WindowsMotorYollari(
+    val ytDlp: Path,
+    val ffmpeg: Path,
+    val ffprobe: Path,
+    val deno: Path?,
+)
+
+class WindowsMotorKurucusu(
     private val motorDizini: Path = varsayilanMotorDizini(),
 ) {
     private val istemci = HttpClient.newBuilder()
         .followRedirects(HttpClient.Redirect.ALWAYS)
-        .connectTimeout(Duration.ofSeconds(20))
+        .connectTimeout(Duration.ofSeconds(25))
         .build()
+    private val json = Json { ignoreUnknownKeys = true }
 
-    fun guncelle(): String {
+    @Synchronized
+    fun hazirla(): WindowsMotorYollari {
         Files.createDirectories(motorDizini)
-        val calistirilabilir = motorDizini.resolve("yt-dlp.exe")
+        val ytDlp = motorDizini.resolve("yt-dlp.exe")
+        val ffmpeg = motorDizini.resolve("ffmpeg.exe")
+        val ffprobe = motorDizini.resolve("ffprobe.exe")
+        val deno = motorDizini.resolve("deno.exe")
 
-        return if (Files.isRegularFile(calistirilabilir)) {
-            mevcutSurumuGuncelle(calistirilabilir)
-        } else {
-            ilkSurumuIndir(calistirilabilir)
+        ytDlpHazirla(ytDlp)
+        if (!Files.isRegularFile(ffmpeg) || !Files.isRegularFile(ffprobe)) {
+            arsivdenBilesenKur(
+                apiAdresi = "https://api.github.com/repos/yt-dlp/FFmpeg-Builds/releases/latest",
+                assetSecici = { ad -> ad.contains("win64", ignoreCase = true) && ad.contains("gpl", ignoreCase = true) && ad.endsWith(".zip") },
+                hedefler = mapOf("ffmpeg.exe" to ffmpeg, "ffprobe.exe" to ffprobe),
+            )
         }
-    }
+        if (!Files.isRegularFile(deno)) {
+            runCatching {
+                arsivdenBilesenKur(
+                    apiAdresi = "https://api.github.com/repos/denoland/deno/releases/latest",
+                    assetSecici = { ad -> ad == "deno-x86_64-pc-windows-msvc.zip" },
+                    hedefler = mapOf("deno.exe" to deno),
+                )
+            }.onFailure { hata ->
+                System.err.println("[YT İndirici] Deno kurulamadı; yt-dlp mevcut yöntemle devam edecek: ${hata.message}")
+            }
+        }
 
-    private fun mevcutSurumuGuncelle(calistirilabilir: Path): String {
-        val surec = ProcessBuilder(
-            calistirilabilir.toAbsolutePath().toString(),
-            "--update-to",
-            "nightly",
+        return WindowsMotorYollari(
+            ytDlp = ytDlp,
+            ffmpeg = ffmpeg,
+            ffprobe = ffprobe,
+            deno = deno.takeIf(Files::isRegularFile),
         )
-            .redirectErrorStream(true)
-            .start()
-
-        val tamamlandi = surec.waitFor(2, TimeUnit.MINUTES)
-        if (!tamamlandi) {
-            surec.destroyForcibly()
-            error("Güncelleme iki dakika içinde tamamlanmadı")
-        }
-
-        val cikti = surec.inputStream.bufferedReader().use { it.readText().trim() }
-        check(surec.exitValue() == 0) {
-            "yt-dlp güncelleme komutu başarısız: ${cikti.ifBlank { "bilinmeyen hata" }}"
-        }
-        return cikti.ifBlank { "yt-dlp Nightly sürümü denetlendi." }
     }
 
-    private fun ilkSurumuIndir(hedef: Path): String {
-        val toplamlar = metinIndir(SHA256_ADRESI)
-        val beklenen = beklenenSha256(toplamlar, "yt-dlp.exe")
+    fun surum(): String {
+        val yollar = hazirla()
+        val surec = ProcessBuilder(yollar.ytDlp.toString(), "--version").redirectErrorStream(true).start()
+        val cikti = surec.inputStream.bufferedReader().use { it.readText().trim() }
+        check(surec.waitFor(30, TimeUnit.SECONDS) && surec.exitValue() == 0) { "yt-dlp sürümü okunamadı" }
+        return cikti
+    }
+
+    private fun ytDlpHazirla(hedef: Path) {
+        if (Files.isRegularFile(hedef)) {
+            val surec = ProcessBuilder(hedef.toString(), "--update-to", "nightly")
+                .redirectErrorStream(true)
+                .start()
+            if (!surec.waitFor(2, TimeUnit.MINUTES)) {
+                surec.destroyForcibly()
+                error("yt-dlp güncellemesi zaman aşımına uğradı")
+            }
+            val cikti = surec.inputStream.bufferedReader().use { it.readText().trim() }
+            check(surec.exitValue() == 0) { "yt-dlp güncellemesi başarısız: ${cikti.ifBlank { "bilinmeyen hata" }}" }
+            return
+        }
+
+        val toplamlar = metinIndir("https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/SHA2-256SUMS")
+        val beklenen = toplamlar.lineSequence()
+            .map(String::trim)
+            .firstOrNull { it.endsWith("yt-dlp.exe") }
+            ?.substringBefore(' ')
+            ?.takeIf { it.length == 64 }
             ?: error("Resmî SHA-256 listesinde yt-dlp.exe bulunamadı")
 
         val gecici = hedef.resolveSibling("yt-dlp.exe.indiriliyor")
-        val yanit = istemci.send(
-            istek(YT_DLP_ADRESI),
-            HttpResponse.BodyHandlers.ofFile(gecici),
-        )
-        check(yanit.statusCode() in 200..299) { "yt-dlp indirilemedi: HTTP ${yanit.statusCode()}" }
-
-        val gercek = sha256(gecici)
-        check(gercek.equals(beklenen, ignoreCase = true)) {
+        dosyaIndir("https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.exe", gecici)
+        check(sha256(gecici).equals(beklenen, ignoreCase = true)) {
             Files.deleteIfExists(gecici)
             "yt-dlp SHA-256 doğrulaması başarısız"
         }
+        atomikTasi(gecici, hedef)
+    }
 
-        try {
-            Files.move(
-                gecici,
-                hedef,
-                StandardCopyOption.REPLACE_EXISTING,
-                StandardCopyOption.ATOMIC_MOVE,
-            )
-        } catch (_: AtomicMoveNotSupportedException) {
-            Files.move(gecici, hedef, StandardCopyOption.REPLACE_EXISTING)
+    private fun arsivdenBilesenKur(
+        apiAdresi: String,
+        assetSecici: (String) -> Boolean,
+        hedefler: Map<String, Path>,
+    ) {
+        val kok = json.parseToJsonElement(metinIndir(apiAdresi)).jsonObject
+        val varliklar: JsonArray = kok["assets"]?.jsonArray ?: error("Sürüm varlıkları bulunamadı")
+        val varlik: JsonObject = varliklar
+            .map { it.jsonObject }
+            .firstOrNull { assetSecici(it["name"]?.jsonPrimitive?.content.orEmpty()) }
+            ?: error("Uygun Windows paketi bulunamadı")
+
+        val indirmeAdresi = varlik["browser_download_url"]?.jsonPrimitive?.content
+            ?: error("Paket indirme adresi bulunamadı")
+        val assetAdi = varlik["name"]?.jsonPrimitive?.content ?: "motor.zip"
+        val beklenenOzet = varlik["digest"]?.jsonPrimitive?.content
+            ?.removePrefix("sha256:")
+            ?.takeIf { it.length == 64 }
+
+        val arsiv = motorDizini.resolve("$assetAdi.indiriliyor")
+        dosyaIndir(indirmeAdresi, arsiv)
+        if (beklenenOzet != null) {
+            check(sha256(arsiv).equals(beklenenOzet, ignoreCase = true)) {
+                Files.deleteIfExists(arsiv)
+                "$assetAdi SHA-256 doğrulaması başarısız"
+            }
         }
 
-        return "yt-dlp Nightly indirildi ve SHA-256 doğrulaması tamamlandı."
+        val kalan = hedefler.toMutableMap()
+        ZipInputStream(BufferedInputStream(Files.newInputStream(arsiv))).use { zip ->
+            while (true) {
+                val giris = zip.nextEntry ?: break
+                if (!giris.isDirectory) {
+                    val dosyaAdi = Path.of(giris.name).fileName.toString().lowercase()
+                    kalan.entries.firstOrNull { it.key.lowercase() == dosyaAdi }?.let { eslesme ->
+                        val gecici = eslesme.value.resolveSibling("${eslesme.value.fileName}.indiriliyor")
+                        Files.newOutputStream(gecici).use { cikti -> zip.copyTo(cikti, DEFAULT_BUFFER_SIZE * 16) }
+                        atomikTasi(gecici, eslesme.value)
+                        kalan.remove(eslesme.key)
+                    }
+                }
+                zip.closeEntry()
+                if (kalan.isEmpty()) break
+            }
+        }
+        Files.deleteIfExists(arsiv)
+        check(kalan.isEmpty()) { "Arşivde bulunamayan bileşenler: ${kalan.keys.joinToString()}" }
     }
 
     private fun metinIndir(adres: String): String {
-        val yanit = istemci.send(
-            istek(adres),
-            HttpResponse.BodyHandlers.ofString(),
-        )
+        val yanit = istemci.send(istek(adres), HttpResponse.BodyHandlers.ofString())
         check(yanit.statusCode() in 200..299) { "Güncelleme bilgisi alınamadı: HTTP ${yanit.statusCode()}" }
         return yanit.body()
     }
 
+    private fun dosyaIndir(adres: String, hedef: Path) {
+        Files.deleteIfExists(hedef)
+        val yanit = istemci.send(istek(adres), HttpResponse.BodyHandlers.ofFile(hedef))
+        check(yanit.statusCode() in 200..299) {
+            Files.deleteIfExists(hedef)
+            "Dosya indirilemedi: HTTP ${yanit.statusCode()}"
+        }
+    }
+
     private fun istek(adres: String): HttpRequest = HttpRequest.newBuilder(URI.create(adres))
-        .timeout(Duration.ofMinutes(2))
-        .header("User-Agent", "YT-Indirici/0.1")
+        .timeout(Duration.ofMinutes(5))
+        .header("User-Agent", "YT-Indirici/0.2")
+        .header("Accept", "application/vnd.github+json")
         .GET()
         .build()
-
-    internal fun beklenenSha256(liste: String, dosyaAdi: String): String? = liste
-        .lineSequence()
-        .map { it.trim() }
-        .firstOrNull { satir -> satir.endsWith(dosyaAdi) }
-        ?.substringBefore(' ')
-        ?.takeIf { it.length == 64 }
 
     private fun sha256(dosya: Path): String {
         val ozet = MessageDigest.getInstance("SHA-256")
         Files.newInputStream(dosya).use { akis ->
-            val tampon = ByteArray(DEFAULT_BUFFER_SIZE)
+            val tampon = ByteArray(DEFAULT_BUFFER_SIZE * 16)
             while (true) {
                 val okunan = akis.read(tampon)
                 if (okunan < 0) break
                 ozet.update(tampon, 0, okunan)
             }
         }
-        return ozet.digest().joinToString("") { bayt -> "%02x".format(bayt) }
+        return ozet.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private fun atomikTasi(kaynak: Path, hedef: Path) {
+        try {
+            Files.move(kaynak, hedef, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+        } catch (_: AtomicMoveNotSupportedException) {
+            Files.move(kaynak, hedef, StandardCopyOption.REPLACE_EXISTING)
+        }
     }
 
     companion object {
-        private const val YT_DLP_ADRESI =
-            "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.exe"
-        private const val SHA256_ADRESI =
-            "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/SHA2-256SUMS"
-
-        private fun varsayilanMotorDizini(): Path {
+        fun varsayilanMotorDizini(): Path {
             val yerelUygulamaVerisi = System.getenv("LOCALAPPDATA")
-                ?.takeIf { it.isNotBlank() }
+                ?.takeIf(String::isNotBlank)
                 ?: Path.of(System.getProperty("user.home"), "AppData", "Local").toString()
             return Path.of(yerelUygulamaVerisi, "YT İndirici", "motor")
         }
+    }
+}
+
+@Deprecated("WindowsMotorKurucusu kullanın")
+class WindowsYtDlpGuncelleyici {
+    fun guncelle(): String {
+        WindowsMotorKurucusu().hazirla()
+        return "yt-dlp, FFmpeg ve Deno bileşenleri denetlendi."
     }
 }
