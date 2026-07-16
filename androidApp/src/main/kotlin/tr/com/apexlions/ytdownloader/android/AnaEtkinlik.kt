@@ -23,13 +23,19 @@ class AnaEtkinlik : ComponentActivity() {
         bildirimIzniniIste()
 
         val uygulama = application as YTIndiriciUygulamasi
+        val developer = BuildConfig.DEVELOPER_SURUMU
         setContent {
             YTIndiriciUygulamasi(
                 denetleyici = uygulama.denetleyici,
                 platform = PlatformBilgisi(
-                    ad = "Android",
+                    ad = if (developer) "Bmobil Developer" else "Bmobil",
                     diskSecimiDestekleniyor = false,
-                    depolamaAciklamasi = "İçerikler uygulamanın dahili, özel ve AES-256-GCM şifreli kütüphanesinde tutulur.",
+                    depolamaAciklamasi = if (developer) {
+                        "İçerikler cihazın İndirilenler/Bmobil Developer klasörüne normal medya dosyası olarak aktarılır."
+                    } else {
+                        "İçerikler uygulamanın dahili, özel ve AES-256-GCM şifreli kütüphanesinde tutulur."
+                    },
+                    developerSurumu = developer,
                 ),
                 ilkBaglanti = paylasilanBaglanti(intent).orEmpty(),
             )

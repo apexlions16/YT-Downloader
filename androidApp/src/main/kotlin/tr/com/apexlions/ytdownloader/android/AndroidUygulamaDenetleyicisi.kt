@@ -7,7 +7,6 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
-import com.yausername.youtubedl_android.mapper.VideoFormat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -30,7 +29,6 @@ import tr.com.apexlions.ytdownloader.model.UygulamaSekmesi
 import java.io.File
 import java.net.URI
 import java.util.UUID
-import kotlin.math.max
 
 class AndroidUygulamaDenetleyicisi(
     private val uygulama: YTIndiriciUygulamasi,
@@ -38,6 +36,7 @@ class AndroidUygulamaDenetleyicisi(
     private val kapsam = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val katalog = AndroidKatalogDeposu(uygulama)
     private val sifreliDepo = SifreliMedyaDeposu()
+    private val acikDepo = AndroidAcikMedyaDeposu(uygulama)
     private val _durum = MutableStateFlow(UygulamaDurumu())
     override val durum: StateFlow<UygulamaDurumu> = _durum.asStateFlow()
 
@@ -59,6 +58,8 @@ class AndroidUygulamaDenetleyicisi(
                 baglanti = baglanti.trim(),
                 analizSonucu = null,
                 seciliSecenekKimligi = null,
+                seciliSesParcasiKimlikleri = emptySet(),
+                seciliAltyaziDilleri = emptySet(),
                 hataMesaji = null,
             )
         }
@@ -76,34 +77,31 @@ class AndroidUygulamaDenetleyicisi(
             runCatching {
                 uygulama.motoruHazirla()
                 val istek = YoutubeDLRequest(adres)
+                    .addOption("--dump-single-json")
+                    .addOption("--skip-download")
                     .addOption("--no-playlist")
                     .addOption("--no-warnings")
                     .addOption("--socket-timeout", 30)
-                val bilgi = YoutubeDL.getInstance().getInfo(istek)
-                val secenekler = secenekleriOlustur(bilgi.formats.orEmpty(), bilgi.duration.toLong())
-                val sonuc = AnalizSonucu(
-                    kaynakAdresi = adres,
-                    medyaKimligi = bilgi.id?.ifBlank { null } ?: UUID.randomUUID().toString(),
-                    baslik = bilgi.title?.ifBlank { null } ?: "Başlıksız içerik",
-                    aciklama = bilgi.description,
-                    kanalKimligi = bilgi.uploaderId?.ifBlank { null } ?: bilgi.uploader.orEmpty().ifBlank { "bilinmeyen-kanal" },
-                    kanalAdi = bilgi.uploader?.ifBlank { null } ?: "Bilinmeyen kanal",
-                    kanalKullaniciAdi = bilgi.uploaderId,
-                    kapakAdresi = bilgi.thumbnail,
-                    sureSaniye = bilgi.duration.toLong(),
-                    yayinTarihi = bilgi.uploadDate?.tarihBicimineCevir(),
-                    secenekler = secenekler,
+                val cevap = YoutubeDL.getInstance().execute(istek)
+                val jsonSatiri = cevap.out.lineSequence().lastOrNull { it.trimStart().startsWith("{") }
+                    ?: error("yt-dlp geçerli metadata döndürmedi")
+                val sonuc = AndroidMetadataDonusturucu.analizSonucuOlustur(
+                    adres,
+                    YoutubeDL.objectMapper.readTree(jsonSatiri),
                 )
-                val varsayilan = secenekler.firstOrNull { it.kimlik == "video-en-hizli" }
-                    ?: secenekler.firstOrNull { it.tur == IcerikTuru.VIDEO }
-                    ?: secenekler.firstOrNull()
+                val varsayilanSecenek = sonuc.secenekler.firstOrNull { it.kimlik == "video-en-hizli" }
+                    ?: sonuc.secenekler.firstOrNull { it.tur == IcerikTuru.VIDEO }
+                    ?: sonuc.secenekler.firstOrNull()
+                val varsayilanSesler = varsayilanSesKimlikleri(sonuc)
 
                 _durum.update {
                     it.copy(
                         analizEdiliyor = false,
                         analizSonucu = sonuc,
-                        seciliSecenekKimligi = varsayilan?.kimlik,
-                        bilgiMesaji = "${secenekler.size} indirme seçeneği bulundu.",
+                        seciliSecenekKimligi = varsayilanSecenek?.kimlik,
+                        seciliSesParcasiKimlikleri = varsayilanSesler,
+                        seciliAltyaziDilleri = emptySet(),
+                        bilgiMesaji = "${sonuc.secenekler.size} kalite, ${sonuc.sesParcalari.size} ses ve ${sonuc.altyazilar.size} altyazı seçeneği bulundu.",
                     )
                 }
             }.onFailure { hata ->
@@ -115,6 +113,26 @@ class AndroidUygulamaDenetleyicisi(
 
     override fun secenekSec(secenekKimligi: String) {
         _durum.update { it.copy(seciliSecenekKimligi = secenekKimligi) }
+    }
+
+    override fun sesParcasiSec(formatKimligi: String, secili: Boolean) {
+        _durum.update { mevcut ->
+            mevcut.copy(
+                seciliSesParcasiKimlikleri = mevcut.seciliSesParcasiKimlikleri.toMutableSet().apply {
+                    if (secili) add(formatKimligi) else remove(formatKimligi)
+                },
+            )
+        }
+    }
+
+    override fun altyaziSec(dilKodu: String, secili: Boolean) {
+        _durum.update { mevcut ->
+            mevcut.copy(
+                seciliAltyaziDilleri = mevcut.seciliAltyaziDilleri.toMutableSet().apply {
+                    if (secili) add(dilKodu) else remove(dilKodu)
+                },
+            )
+        }
     }
 
     override fun indirmeyiBaslat() {
@@ -153,7 +171,19 @@ class AndroidUygulamaDenetleyicisi(
             uygulama.motoruHazirla()
             goreviGuncelle(gorevKimligi) { it.copy(durum = IndirmeDurumu.INDIRILIYOR) }
 
-            val parcaSayisi = seciliParcaSayisi()
+            val seciliSesler = analiz.sesParcalari.filter { it.formatKimligi in _durum.value.seciliSesParcasiKimlikleri }
+            val seciliAltyazilar = analiz.altyazilar.filter { it.dilKodu in _durum.value.seciliAltyaziDilleri }
+            val varsayilanSesler = varsayilanSesKimlikleri(analiz)
+            val ozelSesSecimi = seciliSesler.map { it.formatKimligi }.toSet() != varsayilanSesler && seciliSesler.isNotEmpty()
+            val ekParcaVar = secenek.tur == IcerikTuru.VIDEO && (ozelSesSecimi || seciliSesler.size > 1 || seciliAltyazilar.isNotEmpty())
+            val ciktiUzantisi = if (ekParcaVar) "mkv" else secenek.hedefUzanti
+            val secici = if (secenek.tur == IcerikTuru.VIDEO && ozelSesSecimi) {
+                val video = secenek.videoFormatKimligi ?: "bestvideo"
+                "$video+${seciliSesler.joinToString("+") { it.formatKimligi }}"
+            } else {
+                secenek.ytDlpSecici
+            }
+
             val ciktiKalibi = File(geciciDizin, "%(id)s.%(ext)s").absolutePath
             val istek = YoutubeDLRequest(analiz.kaynakAdresi)
                 .addOption("--no-playlist")
@@ -162,22 +192,32 @@ class AndroidUygulamaDenetleyicisi(
                 .addOption("--continue")
                 .addOption("--retries", 10)
                 .addOption("--fragment-retries", 10)
-                .addOption("--concurrent-fragments", parcaSayisi)
+                .addOption("--concurrent-fragments", seciliParcaSayisi())
                 .addOption("--write-info-json")
                 .addOption("--write-thumbnail")
                 .addOption("--convert-thumbnails", "jpg")
                 .addOption("--add-metadata")
                 .addOption("-o", ciktiKalibi)
-                .addOption("-f", secenek.ytDlpSecici)
+                .addOption("-f", secici)
 
             if (secenek.tur == IcerikTuru.SES) {
                 istek.addOption("--extract-audio")
-                    .addOption("--audio-format", secenek.hedefUzanti)
+                    .addOption("--audio-format", sesDonusumAdi(secenek.hedefUzanti))
                 if (secenek.hedefUzanti in setOf("mp3", "ogg")) {
                     istek.addOption("--audio-quality", "0")
                 }
             } else {
-                istek.addOption("--merge-output-format", secenek.hedefUzanti)
+                if (seciliSesler.size > 1) istek.addOption("--audio-multistreams")
+                if (seciliAltyazilar.isNotEmpty()) {
+                    val normalVar = seciliAltyazilar.any { !it.otomatik }
+                    val otomatikVar = seciliAltyazilar.any { it.otomatik }
+                    if (normalVar) istek.addOption("--write-subs")
+                    if (otomatikVar) istek.addOption("--write-auto-subs")
+                    istek.addOption("--sub-langs", seciliAltyazilar.joinToString(",") { it.dilKodu })
+                        .addOption("--convert-subs", "srt")
+                        .addOption("--embed-subs")
+                }
+                istek.addOption("--merge-output-format", ciktiUzantisi)
             }
 
             YoutubeDL.getInstance().execute(istek, gorevKimligi) { ilerleme, eta, satir ->
@@ -194,28 +234,42 @@ class AndroidUygulamaDenetleyicisi(
                 IndirmeHizmeti.guncelle(uygulama, analiz.baslik, ilerleme.toInt())
             }
 
-            goreviGuncelle(gorevKimligi) {
-                it.copy(durum = IndirmeDurumu.SIFRELENIYOR, ilerlemeYuzdesi = 100f, hizMetni = "", kalanSureMetni = "")
-            }
-
             val medyaDosyasi = geciciDizin.walkTopDown()
                 .filter { it.isFile }
-                .filterNot { it.extension.lowercase() in METADATA_UZANTILARI }
+                .filterNot { it.extension.lowercase() in YAN_DOSYA_UZANTILARI }
                 .maxByOrNull { it.length() }
                 ?: error("İndirilen medya dosyası bulunamadı")
 
             val kutuphaneDizini = File(uygulama.filesDir, "kutuphane")
-            val medyaDizini = File(kutuphaneDizini, "medya").apply { mkdirs() }
             val kapakDizini = File(kutuphaneDizini, "kapaklar").apply { mkdirs() }
-            val sifreliDosya = File(medyaDizini, "${analiz.medyaKimligi}-${System.currentTimeMillis()}.ytdm")
-            sifreliDepo.sifrele(medyaDosyasi, sifreliDosya)
-
             val kapakKaynak = geciciDizin.walkTopDown()
                 .firstOrNull { it.isFile && it.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp") }
             val kapakHedef = kapakKaynak?.let {
                 File(kapakDizini, "${analiz.medyaKimligi}.${it.extension.lowercase()}").also { hedef ->
                     it.copyTo(hedef, overwrite = true)
                 }
+            }
+
+            val medyaKonumu: String
+            val sifreliDosyaYolu: String
+            val sifreli: Boolean
+            val gercekBoyut: Long
+
+            if (BuildConfig.DEVELOPER_SURUMU) {
+                goreviGuncelle(gorevKimligi) { it.copy(durum = IndirmeDurumu.DISARI_AKTARILIYOR, ilerlemeYuzdesi = 100f) }
+                medyaKonumu = acikDepo.kaydet(medyaDosyasi, analiz.baslik, medyaDosyasi.extension.ifBlank { ciktiUzantisi })
+                sifreliDosyaYolu = ""
+                sifreli = false
+                gercekBoyut = medyaDosyasi.length()
+            } else {
+                goreviGuncelle(gorevKimligi) { it.copy(durum = IndirmeDurumu.SIFRELENIYOR, ilerlemeYuzdesi = 100f) }
+                val medyaDizini = File(kutuphaneDizini, "medya").apply { mkdirs() }
+                val sifreliDosya = File(medyaDizini, "${analiz.medyaKimligi}-${System.currentTimeMillis()}.ytdm")
+                sifreliDepo.sifrele(medyaDosyasi, sifreliDosya)
+                medyaKonumu = sifreliDosya.absolutePath
+                sifreliDosyaYolu = sifreliDosya.absolutePath
+                sifreli = true
+                gercekBoyut = sifreliDosya.length()
             }
 
             val kayit = KutuphaneKaydi(
@@ -226,24 +280,29 @@ class AndroidUygulamaDenetleyicisi(
                 kanalAdi = analiz.kanalAdi,
                 kanalKullaniciAdi = analiz.kanalKullaniciAdi,
                 kapakDosyasi = kapakHedef?.absolutePath,
-                sifreliMedyaDosyasi = sifreliDosya.absolutePath,
-                asilUzanti = medyaDosyasi.extension.ifBlank { secenek.hedefUzanti },
+                sifreliMedyaDosyasi = sifreliDosyaYolu,
+                medyaKonumu = medyaKonumu,
+                sifreli = sifreli,
+                asilUzanti = medyaDosyasi.extension.ifBlank { ciktiUzantisi },
                 sureSaniye = analiz.sureSaniye,
-                boyutBayt = sifreliDosya.length(),
+                boyutBayt = gercekBoyut,
                 cozunurluk = secenek.yukseklik?.let { "${it}p" },
                 kareHizi = secenek.kareHizi,
                 videoKodegi = secenek.videoKodegi,
                 sesKodegi = secenek.sesKodegi,
+                sesParcalari = seciliSesler.map { it.gorunenAd },
+                altyaziParcalari = seciliAltyazilar.map { it.gorunenAd },
                 indirilenTarihMillis = System.currentTimeMillis(),
             )
 
             val yeniKutuphane = listOf(kayit) + _durum.value.kutuphane.filterNot { it.medyaKimligi == kayit.medyaKimligi }
             katalog.kaydet(yeniKutuphane)
-            goreviGuncelle(gorevKimligi) {
-                it.copy(durum = IndirmeDurumu.TAMAMLANDI, ilerlemeYuzdesi = 100f)
-            }
+            goreviGuncelle(gorevKimligi) { it.copy(durum = IndirmeDurumu.TAMAMLANDI, ilerlemeYuzdesi = 100f) }
             kutuphaneyiDurumaYaz(yeniKutuphane)
-            bilgiGoster("“${analiz.baslik}” şifreli kütüphaneye eklendi.")
+            bilgiGoster(
+                if (BuildConfig.DEVELOPER_SURUMU) "“${analiz.baslik}” İndirilenler/Bmobil Developer klasörüne kaydedildi."
+                else "“${analiz.baslik}” şifreli Bmobil kütüphanesine eklendi.",
+            )
         } catch (_: YoutubeDL.CanceledException) {
             goreviGuncelle(gorevKimligi) { it.copy(durum = IndirmeDurumu.IPTAL_EDILDI) }
         } catch (hata: Throwable) {
@@ -270,13 +329,26 @@ class AndroidUygulamaDenetleyicisi(
 
         kapsam.launch {
             runCatching {
-                val sifreli = File(kayit.sifreliMedyaDosyasi)
-                require(sifreli.isFile) { "Şifreli medya dosyası bulunamadı" }
-                val gecici = File(uygulama.cacheDir, "oynatma/${kayit.medyaKimligi}.${kayit.asilUzanti}")
-                sifreliDepo.coz(sifreli, gecici)
+                val konum: String
+                val gecici: Boolean
+                if (kayit.sifreli) {
+                    val sifreliDosya = File(kayit.etkinMedyaKonumu)
+                    require(sifreliDosya.isFile) { "Şifreli medya dosyası bulunamadı" }
+                    val oynatmaDizini = File(uygulama.cacheDir, "oynatma/${UUID.randomUUID()}").apply { mkdirs() }
+                    val acikDosya = File(oynatmaDizini, "${kayit.medyaKimligi}.${kayit.asilUzanti}")
+                    sifreliDepo.coz(sifreliDosya, acikDosya)
+                    konum = acikDosya.toURI().toString()
+                    gecici = true
+                } else {
+                    konum = kayit.etkinMedyaKonumu
+                    require(konum.isNotBlank()) { "Açık medya konumu bulunamadı" }
+                    gecici = false
+                }
+
                 val intent = Intent(uygulama, OynaticiEtkinligi::class.java)
-                    .putExtra(OynaticiEtkinligi.EK_DOSYA_YOLU, gecici.absolutePath)
+                    .putExtra(OynaticiEtkinligi.EK_MEDYA_KONUMU, konum)
                     .putExtra(OynaticiEtkinligi.EK_BASLIK, kayit.baslik)
+                    .putExtra(OynaticiEtkinligi.EK_GECICI_DOSYA, gecici)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 uygulama.startActivity(intent)
             }.onFailure { hata ->
@@ -287,7 +359,7 @@ class AndroidUygulamaDenetleyicisi(
 
     override fun medyayiSil(medyaKimligi: String) {
         val kayit = _durum.value.kutuphane.firstOrNull { it.medyaKimligi == medyaKimligi } ?: return
-        File(kayit.sifreliMedyaDosyasi).delete()
+        if (kayit.sifreli) File(kayit.etkinMedyaKonumu).delete() else acikDepo.sil(kayit.etkinMedyaKonumu)
         kayit.kapakDosyasi?.let { File(it).delete() }
         val yeni = _durum.value.kutuphane.filterNot { it.medyaKimligi == medyaKimligi }
         katalog.kaydet(yeni)
@@ -326,88 +398,10 @@ class AndroidUygulamaDenetleyicisi(
         _durum.update { it.copy(bilgiMesaji = null, hataMesaji = null) }
     }
 
-    private fun secenekleriOlustur(formatlar: List<VideoFormat>, sureSaniye: Long): List<IndirmeSecenegi> {
-        val sesBoyutu = formatlar
-            .filter { it.acodec != null && it.acodec != "none" && (it.vcodec == null || it.vcodec == "none") }
-            .maxOfOrNull { max(it.fileSize, it.fileSizeApproximate) }
-            ?: 0L
-
-        val videoSecenekleri = formatlar
-            .filter { it.height > 0 && it.vcodec != null && it.vcodec != "none" }
-            .groupBy { it.height to it.fps.coerceAtLeast(0) }
-            .mapNotNull { (_, adaylar) ->
-                val secilen = adaylar.maxByOrNull { max(max(it.fileSize, it.fileSizeApproximate), it.tbr.toLong()) } ?: return@mapNotNull null
-                val fps = secilen.fps.takeIf { it > 0 }
-                val hedef = if (secilen.ext == "mp4" && (secilen.vcodec?.startsWith("avc") == true || secilen.vcodec?.startsWith("h264") == true)) "mp4" else "mkv"
-                val boyut = max(secilen.fileSize, secilen.fileSizeApproximate).takeIf { it > 0 }?.plus(sesBoyutu)
-                IndirmeSecenegi(
-                    kimlik = "video-${secilen.formatId}-${hedef}",
-                    gorunenAd = buildString {
-                        append("${secilen.height}p")
-                        fps?.let { append(" • ${it} FPS") }
-                        append(" • ${hedef.uppercase()}")
-                    },
-                    tur = IcerikTuru.VIDEO,
-                    hedefUzanti = hedef,
-                    ytDlpSecici = "${secilen.formatId}+bestaudio/best",
-                    yukseklik = secilen.height,
-                    kareHizi = fps,
-                    videoKodegi = secilen.vcodec,
-                    sesKodegi = "en iyi ses",
-                    tahminiBoyutBayt = boyut,
-                )
-            }
-            .distinctBy { Triple(it.yukseklik, it.kareHizi, it.hedefUzanti) }
-            .sortedWith(compareByDescending<IndirmeSecenegi> { it.yukseklik ?: 0 }.thenByDescending { it.kareHizi ?: 0 })
-
-        val hizli = IndirmeSecenegi(
-            kimlik = "video-en-hizli",
-            gorunenAd = "En hızlı • Tek dosya • MP4",
-            tur = IcerikTuru.VIDEO,
-            hedefUzanti = "mp4",
-            ytDlpSecici = "best[ext=mp4]/best",
-            videoKodegi = "hazır birleşik akış",
-            sesKodegi = "hazır birleşik akış",
-        )
-        val azami = IndirmeSecenegi(
-            kimlik = "video-azami",
-            gorunenAd = "En yüksek kalite • Otomatik",
-            tur = IcerikTuru.VIDEO,
-            hedefUzanti = "mkv",
-            ytDlpSecici = "bestvideo+bestaudio/best",
-            videoKodegi = "en iyi",
-            sesKodegi = "en iyi",
-        )
-
-        val sesSecenekleri = listOf(
-            sesSecenegi("m4a", "M4A • Hızlı ve uyumlu", 192, sureSaniye, false),
-            sesSecenegi("opus", "Opus • En verimli kalite", 192, sureSaniye, false),
-            sesSecenegi("mp3", "MP3 • En yüksek kalite", 320, sureSaniye, true),
-            sesSecenegi("ogg", "OGG Vorbis • En yüksek kalite", 320, sureSaniye, true),
-            sesSecenegi("flac", "FLAC • Kayıpsız kapsayıcı", 900, sureSaniye, true),
-            sesSecenegi("wav", "WAV • Sıkıştırılmamış", 1411, sureSaniye, true),
-        )
-
-        return listOf(hizli, azami) + videoSecenekleri + sesSecenekleri
+    private fun varsayilanSesKimlikleri(analiz: AnalizSonucu): Set<String> {
+        val isaretli = analiz.sesParcalari.filter { it.varsayilan }.map { it.formatKimligi }.toSet()
+        return if (isaretli.isNotEmpty()) isaretli else analiz.sesParcalari.firstOrNull()?.let { setOf(it.formatKimligi) }.orEmpty()
     }
-
-    private fun sesSecenegi(
-        uzanti: String,
-        ad: String,
-        bitHizi: Int,
-        sureSaniye: Long,
-        donusturme: Boolean,
-    ) = IndirmeSecenegi(
-        kimlik = "ses-$uzanti",
-        gorunenAd = ad,
-        tur = IcerikTuru.SES,
-        hedefUzanti = uzanti,
-        ytDlpSecici = if (uzanti == "m4a") "bestaudio[ext=m4a]/bestaudio/best" else "bestaudio/best",
-        sesKodegi = uzanti.uppercase(),
-        sesBitHiziKbps = bitHizi,
-        tahminiBoyutBayt = if (sureSaniye > 0) sureSaniye * bitHizi * 1000L / 8L else null,
-        donusturmeGerekli = donusturme,
-    )
 
     private fun seciliParcaSayisi(): Int {
         val profil = _durum.value.turboProfili
@@ -441,7 +435,12 @@ class AndroidUygulamaDenetleyicisi(
                 )
             }
             .sortedBy { it.kanalAdi.lowercase() }
-        _durum.update { it.copy(kutuphane = kayitlar.sortedByDescending { kayit -> kayit.indirilenTarihMillis }, kanallar = kanallar) }
+        _durum.update {
+            it.copy(
+                kutuphane = kayitlar.sortedByDescending { kayit -> kayit.indirilenTarihMillis },
+                kanallar = kanallar,
+            )
+        }
     }
 
     private fun goreviGuncelle(gorevKimligi: String, donustur: (IndirmeGorevi) -> IndirmeGorevi) {
@@ -471,20 +470,22 @@ class AndroidUygulamaDenetleyicisi(
             host.endsWith(".youtube-nocookie.com")
     }.getOrDefault(false)
 
-    private fun String.tarihBicimineCevir(): String =
-        if (length == 8 && all(Char::isDigit)) "${substring(0, 4)}-${substring(4, 6)}-${substring(6, 8)}" else this
+    private fun sesDonusumAdi(uzanti: String): String = if (uzanti == "ogg") "vorbis" else uzanti
 
     private fun Throwable.anlasilirMesaj(): String =
-        message?.lineSequence()?.firstOrNull { it.isNotBlank() }?.take(260) ?: javaClass.simpleName
+        message?.lineSequence()?.firstOrNull { it.isNotBlank() }?.take(320) ?: javaClass.simpleName
 
     companion object {
-        private val METADATA_UZANTILARI = setOf("json", "jpg", "jpeg", "png", "webp", "part", "ytdm")
+        private val HIZ_DESENI = Regex("at\\s+([^\\s]+/s)")
+        private val YAN_DOSYA_UZANTILARI = setOf(
+            "json", "jpg", "jpeg", "png", "webp", "vtt", "srt", "ass", "lrc", "part", "ytdl", "description",
+        )
         private val AKTIF_DURUMLAR = setOf(
             IndirmeDurumu.BEKLIYOR,
             IndirmeDurumu.INDIRILIYOR,
             IndirmeDurumu.ISLENIYOR,
             IndirmeDurumu.SIFRELENIYOR,
+            IndirmeDurumu.DISARI_AKTARILIYOR,
         )
-        private val HIZ_DESENI = Regex("""at\s+([^\s]+/s)""")
     }
 }

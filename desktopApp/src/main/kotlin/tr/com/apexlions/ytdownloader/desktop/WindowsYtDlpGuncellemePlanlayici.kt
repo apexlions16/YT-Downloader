@@ -25,18 +25,20 @@ import java.util.zip.ZipInputStream
 object WindowsYtDlpGuncellemePlanlayici {
     private val baslatildi = AtomicBoolean(false)
     private val zamanlayici = Executors.newSingleThreadScheduledExecutor { islem ->
-        Thread(islem, "yt-dlp-guncelleme").apply { isDaemon = true }
+        Thread(islem, "bpc-motor-guncelleme").apply { isDaemon = true }
     }
 
     fun baslat() {
         if (!baslatildi.compareAndSet(false, true)) return
         zamanlayici.scheduleWithFixedDelay(
             {
-                runCatching { WindowsMotorKurucusu().hazirla() }
-                    .onSuccess { println("[YT İndirici] Motor bileşenleri güncel.") }
-                    .onFailure { hata -> System.err.println("[YT İndirici] Motor güncellenemedi; mevcut bileşenler korunuyor: ${hata.message}") }
+                runCatching { WindowsMotorKurucusu().guncelle() }
+                    .onSuccess { println("[BPC] $it") }
+                    .onFailure { hata ->
+                        System.err.println("[BPC] Güncelleme denetlenemedi; paketli motor kullanılmaya devam ediyor: ${hata.message}")
+                    }
             },
-            0,
+            10,
             6,
             TimeUnit.HOURS,
         )
@@ -48,6 +50,7 @@ data class WindowsMotorYollari(
     val ffmpeg: Path,
     val ffprobe: Path,
     val deno: Path?,
+    val mpv: Path,
 )
 
 class WindowsMotorKurucusu(
@@ -66,8 +69,12 @@ class WindowsMotorKurucusu(
         val ffmpeg = motorDizini.resolve("ffmpeg.exe")
         val ffprobe = motorDizini.resolve("ffprobe.exe")
         val deno = motorDizini.resolve("deno.exe")
+        val mpv = motorDizini.resolve("mpv.exe")
 
-        ytDlpHazirla(ytDlp)
+        if (listOf(ytDlp, ffmpeg, ffprobe, mpv).any { !Files.isRegularFile(it) }) {
+            paketliMotoruKur()
+        }
+        if (!Files.isRegularFile(ytDlp)) ytDlpIndir(ytDlp)
         if (!Files.isRegularFile(ffmpeg) || !Files.isRegularFile(ffprobe)) {
             arsivdenBilesenKur(
                 apiAdresi = "https://api.github.com/repos/yt-dlp/FFmpeg-Builds/releases/latest",
@@ -83,15 +90,19 @@ class WindowsMotorKurucusu(
                     hedefler = mapOf("deno.exe" to deno),
                 )
             }.onFailure { hata ->
-                System.err.println("[YT İndirici] Deno kurulamadı; yt-dlp mevcut yöntemle devam edecek: ${hata.message}")
+                System.err.println("[BPC] Deno kurulamadı; yt-dlp mevcut yöntemle devam edecek: ${hata.message}")
             }
         }
 
+        require(Files.isRegularFile(mpv)) {
+            "BPC oynatıcı motoru (mpv.exe) bulunamadı. Uygulamayı yeniden kurmayı deneyin."
+        }
         return WindowsMotorYollari(
             ytDlp = ytDlp,
             ffmpeg = ffmpeg,
             ffprobe = ffprobe,
             deno = deno.takeIf(Files::isRegularFile),
+            mpv = mpv,
         )
     }
 
@@ -103,20 +114,43 @@ class WindowsMotorKurucusu(
         return cikti
     }
 
-    private fun ytDlpHazirla(hedef: Path) {
-        if (Files.isRegularFile(hedef)) {
-            val surec = ProcessBuilder(hedef.toString(), "--update-to", "nightly")
-                .redirectErrorStream(true)
-                .start()
-            if (!surec.waitFor(2, TimeUnit.MINUTES)) {
-                surec.destroyForcibly()
-                error("yt-dlp güncellemesi zaman aşımına uğradı")
-            }
-            val cikti = surec.inputStream.bufferedReader().use { it.readText().trim() }
-            check(surec.exitValue() == 0) { "yt-dlp güncellemesi başarısız: ${cikti.ifBlank { "bilinmeyen hata" }}" }
-            return
+    fun guncelle(): String {
+        val yollar = hazirla()
+        val surec = ProcessBuilder(yollar.ytDlp.toString(), "--update-to", "nightly")
+            .redirectErrorStream(true)
+            .start()
+        if (!surec.waitFor(2, TimeUnit.MINUTES)) {
+            surec.destroyForcibly()
+            return "yt-dlp güncellemesi zaman aşımına uğradı; mevcut sürüm korundu."
         }
+        val cikti = surec.inputStream.bufferedReader().use { it.readText().trim() }
+        return if (surec.exitValue() == 0) {
+            cikti.ifBlank { "yt-dlp Nightly sürümü denetlendi." }
+        } else {
+            "yt-dlp güncellenemedi; mevcut sürüm korundu: ${cikti.lineSequence().lastOrNull().orEmpty()}"
+        }
+    }
 
+    private fun paketliMotoruKur() {
+        val kaynak = WindowsMotorKurucusu::class.java.getResourceAsStream("/windows-motor.zip") ?: return
+        ZipInputStream(BufferedInputStream(kaynak)).use { zip ->
+            while (true) {
+                val giris = zip.nextEntry ?: break
+                if (!giris.isDirectory) {
+                    val dosyaAdi = Path.of(giris.name).fileName.toString()
+                    if (dosyaAdi.lowercase() in PAKETLI_MOTOR_DOSYALARI) {
+                        val hedef = motorDizini.resolve(dosyaAdi)
+                        val gecici = hedef.resolveSibling("${hedef.fileName}.kuruluyor")
+                        Files.newOutputStream(gecici).use { cikti -> zip.copyTo(cikti, DEFAULT_BUFFER_SIZE * 32) }
+                        atomikTasi(gecici, hedef)
+                    }
+                }
+                zip.closeEntry()
+            }
+        }
+    }
+
+    private fun ytDlpIndir(hedef: Path) {
         val toplamlar = metinIndir("https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/SHA2-256SUMS")
         val beklenen = toplamlar.lineSequence()
             .map(String::trim)
@@ -149,18 +183,8 @@ class WindowsMotorKurucusu(
         val indirmeAdresi = varlik["browser_download_url"]?.jsonPrimitive?.content
             ?: error("Paket indirme adresi bulunamadı")
         val assetAdi = varlik["name"]?.jsonPrimitive?.content ?: "motor.zip"
-        val beklenenOzet = varlik["digest"]?.jsonPrimitive?.content
-            ?.removePrefix("sha256:")
-            ?.takeIf { it.length == 64 }
-
         val arsiv = motorDizini.resolve("$assetAdi.indiriliyor")
         dosyaIndir(indirmeAdresi, arsiv)
-        if (beklenenOzet != null) {
-            check(sha256(arsiv).equals(beklenenOzet, ignoreCase = true)) {
-                Files.deleteIfExists(arsiv)
-                "$assetAdi SHA-256 doğrulaması başarısız"
-            }
-        }
 
         val kalan = hedefler.toMutableMap()
         ZipInputStream(BufferedInputStream(Files.newInputStream(arsiv))).use { zip ->
@@ -170,7 +194,7 @@ class WindowsMotorKurucusu(
                     val dosyaAdi = Path.of(giris.name).fileName.toString().lowercase()
                     kalan.entries.firstOrNull { it.key.lowercase() == dosyaAdi }?.let { eslesme ->
                         val gecici = eslesme.value.resolveSibling("${eslesme.value.fileName}.indiriliyor")
-                        Files.newOutputStream(gecici).use { cikti -> zip.copyTo(cikti, DEFAULT_BUFFER_SIZE * 16) }
+                        Files.newOutputStream(gecici).use { cikti -> zip.copyTo(cikti, DEFAULT_BUFFER_SIZE * 32) }
                         atomikTasi(gecici, eslesme.value)
                         kalan.remove(eslesme.key)
                     }
@@ -200,7 +224,7 @@ class WindowsMotorKurucusu(
 
     private fun istek(adres: String): HttpRequest = HttpRequest.newBuilder(URI.create(adres))
         .timeout(Duration.ofMinutes(5))
-        .header("User-Agent", "YT-Indirici/0.2")
+        .header("User-Agent", "BPC/${SurumBilgisi.surum}")
         .header("Accept", "application/vnd.github+json")
         .GET()
         .build()
@@ -208,7 +232,7 @@ class WindowsMotorKurucusu(
     private fun sha256(dosya: Path): String {
         val ozet = MessageDigest.getInstance("SHA-256")
         Files.newInputStream(dosya).use { akis ->
-            val tampon = ByteArray(DEFAULT_BUFFER_SIZE * 16)
+            val tampon = ByteArray(DEFAULT_BUFFER_SIZE * 32)
             while (true) {
                 val okunan = akis.read(tampon)
                 if (okunan < 0) break
@@ -227,19 +251,18 @@ class WindowsMotorKurucusu(
     }
 
     companion object {
+        private val PAKETLI_MOTOR_DOSYALARI = setOf("yt-dlp.exe", "ffmpeg.exe", "ffprobe.exe", "deno.exe", "mpv.exe")
+
         fun varsayilanMotorDizini(): Path {
             val yerelUygulamaVerisi = System.getenv("LOCALAPPDATA")
                 ?.takeIf(String::isNotBlank)
                 ?: Path.of(System.getProperty("user.home"), "AppData", "Local").toString()
-            return Path.of(yerelUygulamaVerisi, "YT İndirici", "motor")
+            return Path.of(yerelUygulamaVerisi, "BPC", "motor")
         }
     }
 }
 
 @Deprecated("WindowsMotorKurucusu kullanın")
 class WindowsYtDlpGuncelleyici {
-    fun guncelle(): String {
-        WindowsMotorKurucusu().hazirla()
-        return "yt-dlp, FFmpeg ve Deno bileşenleri denetlendi."
-    }
+    fun guncelle(): String = WindowsMotorKurucusu().guncelle()
 }

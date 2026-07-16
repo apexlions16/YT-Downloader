@@ -7,6 +7,7 @@ data class PlatformBilgisi(
     val ad: String,
     val diskSecimiDestekleniyor: Boolean,
     val depolamaAciklamasi: String,
+    val developerSurumu: Boolean = false,
 )
 
 @Serializable
@@ -38,6 +39,7 @@ enum class IndirmeDurumu {
     INDIRILIYOR,
     ISLENIYOR,
     SIFRELENIYOR,
+    DISARI_AKTARILIYOR,
     TAMAMLANDI,
     IPTAL_EDILDI,
     HATA,
@@ -53,12 +55,30 @@ enum class TurboProfili(val gorunenAd: String, val parcaSayisi: Int) {
 }
 
 @Serializable
+data class SesParcasiSecenegi(
+    val formatKimligi: String,
+    val gorunenAd: String,
+    val dilKodu: String? = null,
+    val kodek: String? = null,
+    val bitHiziKbps: Int? = null,
+    val varsayilan: Boolean = false,
+)
+
+@Serializable
+data class AltyaziSecenegi(
+    val dilKodu: String,
+    val gorunenAd: String,
+    val otomatik: Boolean = false,
+)
+
+@Serializable
 data class IndirmeSecenegi(
     val kimlik: String,
     val gorunenAd: String,
     val tur: IcerikTuru,
     val hedefUzanti: String,
     val ytDlpSecici: String,
+    val videoFormatKimligi: String? = null,
     val yukseklik: Int? = null,
     val kareHizi: Int? = null,
     val videoKodegi: String? = null,
@@ -81,6 +101,8 @@ data class AnalizSonucu(
     val sureSaniye: Long = 0,
     val yayinTarihi: String? = null,
     val secenekler: List<IndirmeSecenegi> = emptyList(),
+    val sesParcalari: List<SesParcasiSecenegi> = emptyList(),
+    val altyazilar: List<AltyaziSecenegi> = emptyList(),
 )
 
 @Serializable
@@ -106,7 +128,11 @@ data class KutuphaneKaydi(
     val kanalAdi: String,
     val kanalKullaniciAdi: String? = null,
     val kapakDosyasi: String? = null,
-    val sifreliMedyaDosyasi: String,
+    /** 0.2.0 kataloglarıyla geriye uyumluluk için korunur. */
+    val sifreliMedyaDosyasi: String = "",
+    /** Dosya yolu veya Android content:// URI değeri. */
+    val medyaKonumu: String = "",
+    val sifreli: Boolean = true,
     val asilUzanti: String,
     val sureSaniye: Long,
     val boyutBayt: Long,
@@ -114,9 +140,14 @@ data class KutuphaneKaydi(
     val kareHizi: Int? = null,
     val videoKodegi: String? = null,
     val sesKodegi: String? = null,
+    val sesParcalari: List<String> = emptyList(),
+    val altyaziParcalari: List<String> = emptyList(),
     val indirilenTarihMillis: Long,
     val sonKonumMillis: Long = 0,
-)
+) {
+    val etkinMedyaKonumu: String
+        get() = medyaKonumu.ifBlank { sifreliMedyaDosyasi }
+}
 
 @Serializable
 data class KanalProfili(
@@ -130,7 +161,7 @@ data class KanalProfili(
 
 @Serializable
 data class KatalogDosyasi(
-    val surum: Int = 1,
+    val surum: Int = 2,
     val kayitlar: List<KutuphaneKaydi> = emptyList(),
 )
 
@@ -141,6 +172,8 @@ data class UygulamaDurumu(
     val analizEdiliyor: Boolean = false,
     val analizSonucu: AnalizSonucu? = null,
     val seciliSecenekKimligi: String? = null,
+    val seciliSesParcasiKimlikleri: Set<String> = emptySet(),
+    val seciliAltyaziDilleri: Set<String> = emptySet(),
     val aktifIndirmeler: List<IndirmeGorevi> = emptyList(),
     val kutuphane: List<KutuphaneKaydi> = emptyList(),
     val kanallar: List<KanalProfili> = emptyList(),

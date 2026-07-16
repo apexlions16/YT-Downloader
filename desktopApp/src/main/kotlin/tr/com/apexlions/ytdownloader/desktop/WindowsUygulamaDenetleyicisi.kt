@@ -9,14 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.longOrNull
 import tr.com.apexlions.ytdownloader.model.AnalizSonucu
 import tr.com.apexlions.ytdownloader.model.IndirmeDurumu
 import tr.com.apexlions.ytdownloader.model.IndirmeGorevi
@@ -30,11 +23,9 @@ import tr.com.apexlions.ytdownloader.model.UygulamaDurumu
 import tr.com.apexlions.ytdownloader.model.UygulamaSekmesi
 import java.io.File
 import java.net.URI
-import java.nio.file.Path
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
-import kotlin.math.max
 
 class WindowsUygulamaDenetleyicisi(
     private val diskServisi: DiskSecimServisi = DiskSecimServisi(),
@@ -66,7 +57,7 @@ class WindowsUygulamaDenetleyicisi(
                 val surum = motorKurucusu.surum()
                 _durum.update { it.copy(ytDlpSurumu = surum) }
             }.onFailure { hata ->
-                hataGoster("Windows indirme motoru hazırlanamadı: ${hata.anlasilirMesaj()}")
+                hataGoster("BPC indirme motoru hazırlanamadı: ${hata.anlasilirMesaj()}")
             }
         }
     }
@@ -77,6 +68,8 @@ class WindowsUygulamaDenetleyicisi(
                 baglanti = baglanti.trim(),
                 analizSonucu = null,
                 seciliSecenekKimligi = null,
+                seciliSesParcasiKimlikleri = emptySet(),
+                seciliAltyaziDilleri = emptySet(),
                 hataMesaji = null,
             )
         }
@@ -93,23 +86,27 @@ class WindowsUygulamaDenetleyicisi(
         kapsam.launch {
             runCatching {
                 val motor = motorKurucusu.hazirla()
-                val komut = mutableListOf(
-                    motor.ytDlp.toString(),
-                    "--dump-single-json",
-                    "--no-playlist",
-                    "--no-warnings",
-                    "--socket-timeout", "30",
-                    "--ffmpeg-location", motor.ffmpeg.parent.toString(),
-                )
-                motor.deno?.let { komut += listOf("--js-runtimes", "deno:${it}") }
-                komut += adres
-
+                val komut = temelKomut(motor).apply {
+                    addAll(
+                        listOf(
+                            "--dump-single-json",
+                            "--skip-download",
+                            "--no-playlist",
+                            "--no-warnings",
+                            "--socket-timeout", "30",
+                            adres,
+                        ),
+                    )
+                }
                 val cikti = komutCalistir(komut, 3, TimeUnit.MINUTES)
                 val jsonSatiri = cikti.lineSequence().lastOrNull { it.trimStart().startsWith("{") }
                     ?: error("yt-dlp geçerli metadata döndürmedi")
-                val nesne = json.parseToJsonElement(jsonSatiri).jsonObject
-                val sonuc = analizSonucuOlustur(adres, nesne)
+                val sonuc = WindowsMetadataDonusturucu.analizSonucuOlustur(
+                    adres,
+                    json.parseToJsonElement(jsonSatiri).jsonObject,
+                )
                 val varsayilan = sonuc.secenekler.firstOrNull { it.kimlik == "video-en-hizli" }
+                    ?: sonuc.secenekler.firstOrNull { it.tur == IcerikTuru.VIDEO }
                     ?: sonuc.secenekler.firstOrNull()
 
                 _durum.update {
@@ -117,7 +114,9 @@ class WindowsUygulamaDenetleyicisi(
                         analizEdiliyor = false,
                         analizSonucu = sonuc,
                         seciliSecenekKimligi = varsayilan?.kimlik,
-                        bilgiMesaji = "${sonuc.secenekler.size} indirme seçeneği bulundu.",
+                        seciliSesParcasiKimlikleri = varsayilanSesKimlikleri(sonuc),
+                        seciliAltyaziDilleri = emptySet(),
+                        bilgiMesaji = "${sonuc.secenekler.size} kalite, ${sonuc.sesParcalari.size} ses ve ${sonuc.altyazilar.size} altyazı seçeneği bulundu.",
                     )
                 }
             }.onFailure { hata ->
@@ -129,6 +128,26 @@ class WindowsUygulamaDenetleyicisi(
 
     override fun secenekSec(secenekKimligi: String) {
         _durum.update { it.copy(seciliSecenekKimligi = secenekKimligi) }
+    }
+
+    override fun sesParcasiSec(formatKimligi: String, secili: Boolean) {
+        _durum.update { mevcut ->
+            mevcut.copy(
+                seciliSesParcasiKimlikleri = mevcut.seciliSesParcasiKimlikleri.toMutableSet().apply {
+                    if (secili) add(formatKimligi) else remove(formatKimligi)
+                },
+            )
+        }
+    }
+
+    override fun altyaziSec(dilKodu: String, secili: Boolean) {
+        _durum.update { mevcut ->
+            mevcut.copy(
+                seciliAltyaziDilleri = mevcut.seciliAltyaziDilleri.toMutableSet().apply {
+                    if (secili) add(dilKodu) else remove(dilKodu)
+                },
+            )
+        }
     }
 
     override fun indirmeyiBaslat() {
@@ -169,32 +188,53 @@ class WindowsUygulamaDenetleyicisi(
             val motor = motorKurucusu.hazirla()
             goreviGuncelle(gorevKimligi) { it.copy(durum = IndirmeDurumu.INDIRILIYOR) }
 
-            val komut = mutableListOf(
-                motor.ytDlp.toString(),
-                "--no-playlist",
-                "--no-warnings",
-                "--newline",
-                "--continue",
-                "--retries", "10",
-                "--fragment-retries", "10",
-                "--concurrent-fragments", seciliParcaSayisi().toString(),
-                "--write-info-json",
-                "--write-thumbnail",
-                "--convert-thumbnails", "jpg",
-                "--add-metadata",
-                "--ffmpeg-location", motor.ffmpeg.parent.toString(),
-                "--progress-template", "download:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s",
-                "-o", geciciDizin.resolve("%(id)s.%(ext)s").absolutePath,
-                "-f", secenek.ytDlpSecici,
-            )
-            motor.deno?.let { komut += listOf("--js-runtimes", "deno:${it}") }
-            if (secenek.tur == IcerikTuru.SES) {
-                komut += listOf("--extract-audio", "--audio-format", sesDonusumAdi(secenek.hedefUzanti))
-                if (secenek.hedefUzanti in setOf("mp3", "ogg")) komut += listOf("--audio-quality", "0")
+            val seciliSesler = analiz.sesParcalari.filter { it.formatKimligi in _durum.value.seciliSesParcasiKimlikleri }
+            val seciliAltyazilar = analiz.altyazilar.filter { it.dilKodu in _durum.value.seciliAltyaziDilleri }
+            val varsayilanSesler = varsayilanSesKimlikleri(analiz)
+            val ozelSesSecimi = seciliSesler.map { it.formatKimligi }.toSet() != varsayilanSesler && seciliSesler.isNotEmpty()
+            val ekParcaVar = secenek.tur == IcerikTuru.VIDEO && (ozelSesSecimi || seciliSesler.size > 1 || seciliAltyazilar.isNotEmpty())
+            val ciktiUzantisi = if (ekParcaVar) "mkv" else secenek.hedefUzanti
+            val secici = if (secenek.tur == IcerikTuru.VIDEO && ozelSesSecimi) {
+                val video = secenek.videoFormatKimligi ?: "bestvideo"
+                "$video+${seciliSesler.joinToString("+") { it.formatKimligi }}"
             } else {
-                komut += listOf("--merge-output-format", secenek.hedefUzanti)
+                secenek.ytDlpSecici
             }
-            komut += analiz.kaynakAdresi
+
+            val komut = temelKomut(motor).apply {
+                addAll(
+                    listOf(
+                        "--no-playlist",
+                        "--no-warnings",
+                        "--newline",
+                        "--continue",
+                        "--retries", "10",
+                        "--fragment-retries", "10",
+                        "--concurrent-fragments", seciliParcaSayisi().toString(),
+                        "--write-info-json",
+                        "--write-thumbnail",
+                        "--convert-thumbnails", "jpg",
+                        "--add-metadata",
+                        "--progress-template", "download:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s",
+                        "-o", geciciDizin.resolve("%(id)s.%(ext)s").absolutePath,
+                        "-f", secici,
+                    ),
+                )
+                if (secenek.tur == IcerikTuru.SES) {
+                    addAll(listOf("--extract-audio", "--audio-format", sesDonusumAdi(secenek.hedefUzanti)))
+                    if (secenek.hedefUzanti in setOf("mp3", "ogg")) addAll(listOf("--audio-quality", "0"))
+                } else {
+                    if (seciliSesler.size > 1) add("--audio-multistreams")
+                    if (seciliAltyazilar.isNotEmpty()) {
+                        if (seciliAltyazilar.any { !it.otomatik }) add("--write-subs")
+                        if (seciliAltyazilar.any { it.otomatik }) add("--write-auto-subs")
+                        addAll(listOf("--sub-langs", seciliAltyazilar.joinToString(",") { it.dilKodu }))
+                        addAll(listOf("--convert-subs", "srt", "--embed-subs"))
+                    }
+                    addAll(listOf("--merge-output-format", ciktiUzantisi))
+                }
+                add(analiz.kaynakAdresi)
+            }
 
             val surec = ProcessBuilder(komut)
                 .directory(geciciDizin)
@@ -205,7 +245,7 @@ class WindowsUygulamaDenetleyicisi(
 
             surec.inputStream.bufferedReader().useLines { satirlar ->
                 satirlar.forEach { satir ->
-                    if (sonSatirlar.size >= 20) sonSatirlar.removeFirst()
+                    if (sonSatirlar.size >= 40) sonSatirlar.removeFirst()
                     sonSatirlar.addLast(satir)
                     if (satir.startsWith("download:")) {
                         val alanlar = satir.removePrefix("download:").split('|')
@@ -230,27 +270,45 @@ class WindowsUygulamaDenetleyicisi(
                 error(sonSatirlar.joinToString("\n").ifBlank { "yt-dlp çıkış kodu $kod" })
             }
 
-            goreviGuncelle(gorevKimligi) {
-                it.copy(durum = IndirmeDurumu.SIFRELENIYOR, ilerlemeYuzdesi = 100f, hizMetni = "", kalanSureMetni = "")
-            }
-
             val medyaDosyasi = geciciDizin.walkTopDown()
                 .filter(File::isFile)
-                .filterNot { it.extension.lowercase() in METADATA_UZANTILARI }
+                .filterNot { it.extension.lowercase() in YAN_DOSYA_UZANTILARI }
                 .maxByOrNull(File::length)
                 ?: error("İndirilen medya dosyası bulunamadı")
 
-            val medyaDizini = kutuphaneDizini.resolve("medya").apply { mkdirs() }
-            val kapakDizini = kutuphaneDizini.resolve("kapaklar").apply { mkdirs() }
-            val sifreliDosya = medyaDizini.resolve("${analiz.medyaKimligi}-${System.currentTimeMillis()}.ytdm")
-            WindowsSifreliMedyaDeposu(kutuphaneDizini).sifrele(medyaDosyasi, sifreliDosya)
-
+            val sistemDizini = kutuphaneDizini.resolve(".sistem")
+            val kapakDizini = sistemDizini.resolve("kapaklar").apply { mkdirs() }
             val kapakKaynak = geciciDizin.walkTopDown()
                 .firstOrNull { it.isFile && it.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp") }
             val kapakHedef = kapakKaynak?.let {
                 kapakDizini.resolve("${analiz.medyaKimligi}.${it.extension.lowercase()}").also { hedef ->
                     it.copyTo(hedef, overwrite = true)
                 }
+            }
+
+            val medyaKonumu: String
+            val sifreliDosyaYolu: String
+            val sifreli: Boolean
+            val boyut: Long
+
+            if (SurumBilgisi.developerSurumu) {
+                goreviGuncelle(gorevKimligi) { it.copy(durum = IndirmeDurumu.DISARI_AKTARILIYOR, ilerlemeYuzdesi = 100f) }
+                val dosyaAdi = "${guvenliDosyaAdi(analiz.baslik)}-${System.currentTimeMillis()}.${medyaDosyasi.extension.ifBlank { ciktiUzantisi }}"
+                val hedef = kutuphaneDizini.resolve(dosyaAdi)
+                medyaDosyasi.copyTo(hedef, overwrite = true)
+                medyaKonumu = hedef.absolutePath
+                sifreliDosyaYolu = ""
+                sifreli = false
+                boyut = hedef.length()
+            } else {
+                goreviGuncelle(gorevKimligi) { it.copy(durum = IndirmeDurumu.SIFRELENIYOR, ilerlemeYuzdesi = 100f) }
+                val medyaDizini = sistemDizini.resolve("medya").apply { mkdirs() }
+                val sifreliDosya = medyaDizini.resolve("${analiz.medyaKimligi}-${System.currentTimeMillis()}.ytdm")
+                WindowsSifreliMedyaDeposu(kutuphaneDizini).sifrele(medyaDosyasi, sifreliDosya)
+                medyaKonumu = sifreliDosya.absolutePath
+                sifreliDosyaYolu = sifreliDosya.absolutePath
+                sifreli = true
+                boyut = sifreliDosya.length()
             }
 
             val kayit = KutuphaneKaydi(
@@ -261,14 +319,18 @@ class WindowsUygulamaDenetleyicisi(
                 kanalAdi = analiz.kanalAdi,
                 kanalKullaniciAdi = analiz.kanalKullaniciAdi,
                 kapakDosyasi = kapakHedef?.absolutePath,
-                sifreliMedyaDosyasi = sifreliDosya.absolutePath,
-                asilUzanti = medyaDosyasi.extension.ifBlank { secenek.hedefUzanti },
+                sifreliMedyaDosyasi = sifreliDosyaYolu,
+                medyaKonumu = medyaKonumu,
+                sifreli = sifreli,
+                asilUzanti = medyaDosyasi.extension.ifBlank { ciktiUzantisi },
                 sureSaniye = analiz.sureSaniye,
-                boyutBayt = sifreliDosya.length(),
+                boyutBayt = boyut,
                 cozunurluk = secenek.yukseklik?.let { "${it}p" },
                 kareHizi = secenek.kareHizi,
                 videoKodegi = secenek.videoKodegi,
                 sesKodegi = secenek.sesKodegi,
+                sesParcalari = seciliSesler.map { it.gorunenAd },
+                altyaziParcalari = seciliAltyazilar.map { it.gorunenAd },
                 indirilenTarihMillis = System.currentTimeMillis(),
             )
 
@@ -277,7 +339,10 @@ class WindowsUygulamaDenetleyicisi(
             depo.kaydet(yeniKutuphane)
             goreviGuncelle(gorevKimligi) { it.copy(durum = IndirmeDurumu.TAMAMLANDI, ilerlemeYuzdesi = 100f) }
             kutuphaneyiDurumaYaz(yeniKutuphane)
-            bilgiGoster("“${analiz.baslik}” seçilen diskteki şifreli kütüphaneye eklendi.")
+            bilgiGoster(
+                if (SurumBilgisi.developerSurumu) "“${analiz.baslik}” BPC Developer İndirmeleri klasörüne kaydedildi."
+                else "“${analiz.baslik}” şifreli BPC kütüphanesine eklendi.",
+            )
         } catch (hata: Throwable) {
             if (_durum.value.aktifIndirmeler.any { it.gorevKimligi == gorevKimligi && it.durum == IndirmeDurumu.IPTAL_EDILDI }) return
             goreviGuncelle(gorevKimligi) {
@@ -306,13 +371,24 @@ class WindowsUygulamaDenetleyicisi(
 
         kapsam.launch {
             runCatching {
-                val sifreli = File(kayit.sifreliMedyaDosyasi)
-                require(sifreli.isFile) { "Şifreli medya dosyası bulunamadı" }
-                val yerel = System.getenv("LOCALAPPDATA")?.takeIf(String::isNotBlank)
-                    ?: File(System.getProperty("user.home"), "AppData/Local").absolutePath
-                val gecici = File(yerel, "YT İndirici/gecici/${UUID.randomUUID()}.${kayit.asilUzanti}")
-                WindowsSifreliMedyaDeposu(kutuphane).coz(sifreli, gecici)
-                WindowsOynatici.oynat(kayit.baslik, gecici)
+                val motor = motorKurucusu.hazirla()
+                val oynatilacak: File
+                val gecici: Boolean
+                if (kayit.sifreli) {
+                    val sifreliDosya = File(kayit.etkinMedyaKonumu)
+                    require(sifreliDosya.isFile) { "Şifreli medya dosyası bulunamadı" }
+                    val yerel = System.getenv("LOCALAPPDATA")?.takeIf(String::isNotBlank)
+                        ?: File(System.getProperty("user.home"), "AppData/Local").absolutePath
+                    val geciciDizin = File(yerel, "BPC/gecici/${UUID.randomUUID()}").apply { mkdirs() }
+                    oynatilacak = geciciDizin.resolve("${kayit.medyaKimligi}.${kayit.asilUzanti}")
+                    WindowsSifreliMedyaDeposu(kutuphane).coz(sifreliDosya, oynatilacak)
+                    gecici = true
+                } else {
+                    oynatilacak = File(kayit.etkinMedyaKonumu)
+                    require(oynatilacak.isFile) { "Açık medya dosyası bulunamadı" }
+                    gecici = false
+                }
+                WindowsOynatici.oynat(kayit.baslik, oynatilacak, motor.mpv, gecici)
             }.onFailure { hata -> hataGoster("İçerik oynatılamadı: ${hata.anlasilirMesaj()}") }
         }
     }
@@ -322,7 +398,7 @@ class WindowsUygulamaDenetleyicisi(
         val kutuphane = diskServisi.kutuphaneYolu(disk)
         val depo = WindowsKatalogDeposu(kutuphane)
         val kayit = depo.yukle().firstOrNull { it.medyaKimligi == medyaKimligi } ?: return
-        File(kayit.sifreliMedyaDosyasi).delete()
+        File(kayit.etkinMedyaKonumu).delete()
         kayit.kapakDosyasi?.let { File(it).delete() }
         val yeni = depo.yukle().filterNot { it.medyaKimligi == medyaKimligi }
         depo.kaydet(yeni)
@@ -357,9 +433,9 @@ class WindowsUygulamaDenetleyicisi(
     override fun ytDlpGuncelle() {
         kapsam.launch {
             runCatching {
-                motorKurucusu.hazirla()
+                val sonuc = motorKurucusu.guncelle()
                 val surum = motorKurucusu.surum()
-                _durum.update { it.copy(ytDlpSurumu = surum, bilgiMesaji = "yt-dlp, FFmpeg ve Deno bileşenleri denetlendi.") }
+                _durum.update { it.copy(ytDlpSurumu = surum, bilgiMesaji = sonuc) }
             }.onFailure { hata -> hataGoster("Motor güncellenemedi: ${hata.anlasilirMesaj()}") }
         }
     }
@@ -368,170 +444,78 @@ class WindowsUygulamaDenetleyicisi(
         _durum.update { it.copy(bilgiMesaji = null, hataMesaji = null) }
     }
 
-    private fun analizSonucuOlustur(adres: String, nesne: JsonObject): AnalizSonucu {
-        val sure = nesne.long("duration")
-        val formatlar = nesne["formats"]?.jsonArray ?: JsonArray(emptyList())
-        val secenekler = secenekleriOlustur(formatlar, sure)
-        return AnalizSonucu(
-            kaynakAdresi = adres,
-            medyaKimligi = nesne.metin("id").ifBlank { UUID.randomUUID().toString() },
-            baslik = nesne.metin("title").ifBlank { "Başlıksız içerik" },
-            aciklama = nesne.metin("description").ifBlank { null },
-            kanalKimligi = nesne.metin("channel_id").ifBlank { nesne.metin("uploader_id").ifBlank { "bilinmeyen-kanal" } },
-            kanalAdi = nesne.metin("channel").ifBlank { nesne.metin("uploader").ifBlank { "Bilinmeyen kanal" } },
-            kanalKullaniciAdi = nesne.metin("uploader_id").ifBlank { null },
-            kapakAdresi = nesne.metin("thumbnail").ifBlank { null },
-            sureSaniye = sure,
-            yayinTarihi = nesne.metin("upload_date").tarihBicimineCevir().ifBlank { null },
-            secenekler = secenekler,
-        )
-    }
-
-    private fun secenekleriOlustur(formatlar: JsonArray, sureSaniye: Long): List<IndirmeSecenegi> {
-        val nesneler = formatlar.mapNotNull { runCatching { it.jsonObject }.getOrNull() }
-        val sesBoyutu = nesneler
-            .filter { it.metin("acodec") !in setOf("", "none") && it.metin("vcodec") in setOf("", "none") }
-            .maxOfOrNull { max(it.long("filesize"), it.long("filesize_approx")) }
-            ?: 0L
-
-        val videoSecenekleri = nesneler
-            .filter { it.int("height") > 0 && it.metin("vcodec") !in setOf("", "none") }
-            .groupBy { it.int("height") to it.int("fps") }
-            .mapNotNull { (_, adaylar) ->
-                val secilen = adaylar.maxByOrNull {
-                    max(max(it.long("filesize"), it.long("filesize_approx")), it.long("tbr"))
-                } ?: return@mapNotNull null
-                val yukseklik = secilen.int("height")
-                val fps = secilen.int("fps").takeIf { it > 0 }
-                val formatKimligi = secilen.metin("format_id")
-                if (formatKimligi.isBlank()) return@mapNotNull null
-                val vcodec = secilen.metin("vcodec")
-                val hedef = if (secilen.metin("ext") == "mp4" && (vcodec.startsWith("avc") || vcodec.startsWith("h264"))) "mp4" else "mkv"
-                val boyut = max(secilen.long("filesize"), secilen.long("filesize_approx")).takeIf { it > 0 }?.plus(sesBoyutu)
-                IndirmeSecenegi(
-                    kimlik = "video-$formatKimligi-$hedef",
-                    gorunenAd = buildString {
-                        append("${yukseklik}p")
-                        fps?.let { append(" • ${it} FPS") }
-                        append(" • ${hedef.uppercase()}")
-                    },
-                    tur = IcerikTuru.VIDEO,
-                    hedefUzanti = hedef,
-                    ytDlpSecici = "$formatKimligi+bestaudio/best",
-                    yukseklik = yukseklik,
-                    kareHizi = fps,
-                    videoKodegi = vcodec,
-                    sesKodegi = "en iyi ses",
-                    tahminiBoyutBayt = boyut,
-                )
-            }
-            .distinctBy { Triple(it.yukseklik, it.kareHizi, it.hedefUzanti) }
-            .sortedWith(compareByDescending<IndirmeSecenegi> { it.yukseklik ?: 0 }.thenByDescending { it.kareHizi ?: 0 })
-
-        val hizli = IndirmeSecenegi(
-            kimlik = "video-en-hizli",
-            gorunenAd = "En hızlı • Tek dosya • MP4",
-            tur = IcerikTuru.VIDEO,
-            hedefUzanti = "mp4",
-            ytDlpSecici = "best[ext=mp4]/best",
-            videoKodegi = "hazır birleşik akış",
-            sesKodegi = "hazır birleşik akış",
-        )
-        val azami = IndirmeSecenegi(
-            kimlik = "video-azami",
-            gorunenAd = "En yüksek kalite • Otomatik",
-            tur = IcerikTuru.VIDEO,
-            hedefUzanti = "mkv",
-            ytDlpSecici = "bestvideo+bestaudio/best",
-            videoKodegi = "en iyi",
-            sesKodegi = "en iyi",
-        )
-        val sesSecenekleri = listOf(
-            sesSecenegi("m4a", "M4A • Hızlı ve uyumlu", 192, sureSaniye, false),
-            sesSecenegi("opus", "Opus • En verimli kalite", 192, sureSaniye, false),
-            sesSecenegi("mp3", "MP3 • En yüksek kalite", 320, sureSaniye, true),
-            sesSecenegi("ogg", "OGG Vorbis • En yüksek kalite", 320, sureSaniye, true),
-            sesSecenegi("flac", "FLAC • Kayıpsız kapsayıcı", 900, sureSaniye, true),
-            sesSecenegi("wav", "WAV • Sıkıştırılmamış", 1411, sureSaniye, true),
-        )
-        return listOf(hizli, azami) + videoSecenekleri + sesSecenekleri
-    }
-
-    private fun sesSecenegi(uzanti: String, ad: String, bitHizi: Int, sure: Long, donusturme: Boolean) =
-        IndirmeSecenegi(
-            kimlik = "ses-$uzanti",
-            gorunenAd = ad,
-            tur = IcerikTuru.SES,
-            hedefUzanti = uzanti,
-            ytDlpSecici = if (uzanti == "m4a") "bestaudio[ext=m4a]/bestaudio/best" else "bestaudio/best",
-            sesKodegi = uzanti.uppercase(),
-            sesBitHiziKbps = bitHizi,
-            tahminiBoyutBayt = if (sure > 0) sure * bitHizi * 1000L / 8L else null,
-            donusturmeGerekli = donusturme,
-        )
-
-    private fun seciliParcaSayisi(): Int {
-        val profil = _durum.value.turboProfili
-        if (profil != TurboProfili.OTOMATIK) return profil.parcaSayisi
-        val cekirdek = Runtime.getRuntime().availableProcessors()
-        return when {
-            cekirdek >= 8 -> 16
-            cekirdek >= 4 -> 12
-            else -> 8
-        }
-    }
-
-    private fun kutuphaneyiDurumaYaz(kayitlar: List<KutuphaneKaydi>) {
-        val kanallar = kayitlar.groupBy { it.kanalKimligi }.map { (kimlik, kanalKayitlari) ->
-            val ilk = kanalKayitlari.first()
-            KanalProfili(
-                kanalKimligi = kimlik,
-                kanalAdi = ilk.kanalAdi,
-                kullaniciAdi = ilk.kanalKullaniciAdi,
-                profilGorseli = ilk.kapakDosyasi,
-                indirilenIcerikSayisi = kanalKayitlari.size,
-                toplamBoyutBayt = kanalKayitlari.sumOf { it.boyutBayt },
-            )
-        }.sortedBy { it.kanalAdi.lowercase() }
-        _durum.update { it.copy(kutuphane = kayitlar.sortedByDescending { kayit -> kayit.indirilenTarihMillis }, kanallar = kanallar) }
-    }
-
-    private fun goreviGuncelle(gorevKimligi: String, donustur: (IndirmeGorevi) -> IndirmeGorevi) {
-        _durum.update { mevcut ->
-            mevcut.copy(aktifIndirmeler = mevcut.aktifIndirmeler.map { if (it.gorevKimligi == gorevKimligi) donustur(it) else it })
-        }
+    private fun temelKomut(motor: WindowsMotorYollari): MutableList<String> = mutableListOf(
+        motor.ytDlp.toAbsolutePath().toString(),
+        "--ffmpeg-location", motor.ffmpeg.parent.toAbsolutePath().toString(),
+    ).apply {
+        motor.deno?.let { addAll(listOf("--js-runtimes", "deno:${it.toAbsolutePath()}")) }
     }
 
     private fun komutCalistir(komut: List<String>, sure: Long, birim: TimeUnit): String {
         val surec = ProcessBuilder(komut).redirectErrorStream(true).start()
         val cikti = StringBuilder()
-        val okuyucu = Thread { surec.inputStream.bufferedReader().useLines { it.forEach { satir -> cikti.appendLine(satir) } } }.apply { start() }
-        if (!surec.waitFor(sure, birim)) {
+        val okuyucu = Thread {
+            surec.inputStream.bufferedReader().useLines { satirlar -> satirlar.forEach { cikti.appendLine(it) } }
+        }.apply { isDaemon = true; start() }
+        val tamamlandi = surec.waitFor(sure, birim)
+        if (!tamamlandi) {
+            surec.descendants().forEach(ProcessHandle::destroyForcibly)
             surec.destroyForcibly()
-            error("Komut zaman aşımına uğradı")
+            error("İşlem zaman aşımına uğradı")
         }
-        okuyucu.join(10_000)
-        check(surec.exitValue() == 0) { cikti.toString().takeLast(2_000).ifBlank { "Komut başarısız" } }
+        okuyucu.join(5_000)
+        check(surec.exitValue() == 0) {
+            cikti.toString().lineSequence().takeLast(25).joinToString("\n").ifBlank { "Komut başarısız oldu" }
+        }
         return cikti.toString()
     }
 
-    private fun JsonObject.metin(anahtar: String): String = this[anahtar]?.jsonPrimitive?.contentOrNull.orEmpty()
-    private fun JsonObject.int(anahtar: String): Int = this[anahtar]?.jsonPrimitive?.intOrNull ?: 0
-    private fun JsonObject.long(anahtar: String): Long = this[anahtar]?.jsonPrimitive?.longOrNull ?: 0L
+    private fun varsayilanSesKimlikleri(analiz: AnalizSonucu): Set<String> {
+        val isaretli = analiz.sesParcalari.filter { it.varsayilan }.map { it.formatKimligi }.toSet()
+        return if (isaretli.isNotEmpty()) isaretli else analiz.sesParcalari.firstOrNull()?.let { setOf(it.formatKimligi) }.orEmpty()
+    }
 
-    private fun youtubeAdresiMi(adres: String): Boolean = runCatching {
-        val host = URI(adres).host?.lowercase().orEmpty()
-        host == "youtu.be" || host == "youtube.com" || host.endsWith(".youtube.com") ||
-            host == "youtube-nocookie.com" || host.endsWith(".youtube-nocookie.com")
-    }.getOrDefault(false)
+    private fun seciliParcaSayisi(): Int {
+        val profil = _durum.value.turboProfili
+        if (profil != TurboProfili.OTOMATIK) return profil.parcaSayisi
+        val islemci = Runtime.getRuntime().availableProcessors()
+        val bellekGb = Runtime.getRuntime().maxMemory() / 1_073_741_824.0
+        return when {
+            islemci >= 12 && bellekGb >= 4 -> 16
+            islemci >= 6 -> 12
+            else -> 8
+        }
+    }
 
-    private fun String.tarihBicimineCevir(): String =
-        if (length == 8 && all(Char::isDigit)) "${substring(0, 4)}-${substring(4, 6)}-${substring(6, 8)}" else this
+    private fun kutuphaneyiDurumaYaz(kayitlar: List<KutuphaneKaydi>) {
+        val kanallar = kayitlar.groupBy { it.kanalKimligi }.map { (kimlik, liste) ->
+            val ilk = liste.first()
+            KanalProfili(
+                kanalKimligi = kimlik,
+                kanalAdi = ilk.kanalAdi,
+                kullaniciAdi = ilk.kanalKullaniciAdi,
+                profilGorseli = ilk.kapakDosyasi,
+                indirilenIcerikSayisi = liste.size,
+                toplamBoyutBayt = liste.sumOf { it.boyutBayt },
+            )
+        }.sortedBy { it.kanalAdi.lowercase() }
+        _durum.update {
+            it.copy(
+                kutuphane = kayitlar.sortedByDescending(KutuphaneKaydi::indirilenTarihMillis),
+                kanallar = kanallar,
+            )
+        }
+    }
 
-    private fun Throwable.anlasilirMesaj(): String =
-        message?.lineSequence()?.firstOrNull { it.isNotBlank() }?.take(300) ?: javaClass.simpleName
-
-    private fun sesDonusumAdi(uzanti: String): String = if (uzanti == "ogg") "vorbis" else uzanti
+    private fun goreviGuncelle(gorevKimligi: String, donustur: (IndirmeGorevi) -> IndirmeGorevi) {
+        _durum.update { mevcut ->
+            mevcut.copy(
+                aktifIndirmeler = mevcut.aktifIndirmeler.map {
+                    if (it.gorevKimligi == gorevKimligi) donustur(it) else it
+                },
+            )
+        }
+    }
 
     private fun hataGoster(mesaj: String) {
         _durum.update { it.copy(hataMesaji = mesaj, bilgiMesaji = null) }
@@ -541,7 +525,30 @@ class WindowsUygulamaDenetleyicisi(
         _durum.update { it.copy(bilgiMesaji = mesaj, hataMesaji = null) }
     }
 
+    private fun youtubeAdresiMi(adres: String): Boolean = runCatching {
+        val host = URI(adres).host?.lowercase().orEmpty()
+        host == "youtu.be" ||
+            host == "youtube.com" ||
+            host.endsWith(".youtube.com") ||
+            host == "youtube-nocookie.com" ||
+            host.endsWith(".youtube-nocookie.com")
+    }.getOrDefault(false)
+
+    private fun sesDonusumAdi(uzanti: String): String = if (uzanti == "ogg") "vorbis" else uzanti
+
+    private fun guvenliDosyaAdi(ad: String): String = ad
+        .replace(Regex("[\\/:*?\"<>|]"), "_")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+        .take(150)
+        .ifBlank { "medya" }
+
+    private fun Throwable.anlasilirMesaj(): String =
+        message?.lineSequence()?.firstOrNull { it.isNotBlank() }?.take(500) ?: javaClass.simpleName
+
     companion object {
-        private val METADATA_UZANTILARI = setOf("json", "jpg", "jpeg", "png", "webp", "part", "ytdm")
+        private val YAN_DOSYA_UZANTILARI = setOf(
+            "json", "jpg", "jpeg", "png", "webp", "vtt", "srt", "ass", "lrc", "part", "ytdl", "description",
+        )
     }
 }

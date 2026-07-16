@@ -8,6 +8,8 @@ interface UygulamaDenetleyicisi {
     fun baglantiyiDegistir(baglanti: String)
     fun analizEt()
     fun secenekSec(secenekKimligi: String)
+    fun sesParcasiSec(formatKimligi: String, secili: Boolean)
+    fun altyaziSec(dilKodu: String, secili: Boolean)
     fun indirmeyiBaslat()
     fun indirmeyiIptalEt(gorevKimligi: String)
     fun medyayiOynat(medyaKimligi: String)
