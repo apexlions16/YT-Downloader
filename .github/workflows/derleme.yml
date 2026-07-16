@@ -200,3 +200,54 @@ jobs:
         shell: bash
         run: |
           gh issue comment 6 --body "✅ **Bmobil 0.3.1 Android oynatma hotfix Release yayımlandı.**\n\nİki APK ve SHA-256 listesi: https://github.com/${{ github.repository }}/releases/tag/v0.3.1\n\nAna dal Action çalışması: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+  main-ci-sonucunu-kaydet:
+    name: Ana dal CI ve Release sonucunu kaydet
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - android-uygulamalarini-derle
+      - github-release-olustur
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Ana dalı al
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Android derleme günlüğünü al
+        uses: actions/download-artifact@v4
+        with:
+          name: Android-Derleme-Gunlugu-0.3.1
+          path: ci-gunluk
+
+      - name: Ana dal sonucunu okunabilir dosyaya yaz
+        shell: bash
+        run: |
+          mkdir -p ci
+          {
+            echo "run_id=${{ github.run_id }}"
+            echo "run_url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "android_result=${{ needs.android-uygulamalarini-derle.result }}"
+            echo "release_result=${{ needs.github-release-olustur.result }}"
+            echo "commit=${{ github.sha }}"
+            echo
+            echo "===== android-derleme.log son 120 satır ====="
+            tail -n 120 ci-gunluk/android-derleme.log 2>/dev/null || true
+            echo
+            echo "===== SHA-256 ====="
+            cat ci-gunluk/android-sha256.txt 2>/dev/null || true
+          } > ci/android-0.3.1-main-status.txt
+
+      - name: Ana dal sonucunu işle
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci/android-0.3.1-main-status.txt
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Android 0.3.1 ana dal CI sonucunu kaydet [skip ci]"
+          git push origin HEAD:main
