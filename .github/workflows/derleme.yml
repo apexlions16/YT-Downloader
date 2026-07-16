@@ -34,14 +34,35 @@ jobs:
           gradle-version: "8.14.2"
 
       - name: Android hata ayıklama APK'sını derle
-        run: gradle :androidApp:assembleDebug --stacktrace
+        id: android-derleme
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle :androidApp:assembleDebug --stacktrace --console=plain 2>&1 | tee android-derleme.log
+
+      - name: Android derleme günlüğünü yükle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-Derleme-Gunlugu
+          path: android-derleme.log
+          if-no-files-found: error
 
       - name: Android APK'sını yükle
+        if: steps.android-derleme.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: YT-Indirici-Android-Debug
           path: androidApp/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+      - name: Android derleme sonucunu doğrula
+        if: steps.android-derleme.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "Android derlemesi başarısız oldu. Derleme günlüğü artefakt olarak yüklendi."
+          exit 1
 
   windows-uygulamasini-derle:
     name: Windows MSI oluştur
@@ -61,15 +82,33 @@ jobs:
         with:
           gradle-version: "8.14.2"
 
-      - name: Windows testlerini çalıştır
-        run: gradle :desktopApp:test --stacktrace
+      - name: Windows testlerini çalıştır ve MSI oluştur
+        id: windows-derleme
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          & gradle :desktopApp:test :desktopApp:packageMsi --stacktrace --console=plain *>&1 | Tee-Object -FilePath windows-derleme.log
+          exit $LASTEXITCODE
 
-      - name: Windows MSI paketini oluştur
-        run: gradle :desktopApp:packageMsi --stacktrace
+      - name: Windows derleme günlüğünü yükle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-Derleme-Gunlugu
+          path: windows-derleme.log
+          if-no-files-found: error
 
       - name: Windows paketini yükle
+        if: steps.windows-derleme.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: YT-Indirici-Windows-MSI
           path: desktopApp/build/compose/binaries/main/msi/*.msi
           if-no-files-found: error
+
+      - name: Windows derleme sonucunu doğrula
+        if: steps.windows-derleme.outcome == 'failure'
+        shell: pwsh
+        run: |
+          Write-Host "Windows derlemesi başarısız oldu. Derleme günlüğü artefakt olarak yüklendi."
+          exit 1
