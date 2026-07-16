@@ -2,6 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:name=".YTIndiriciUygulamasi"
@@ -11,10 +15,19 @@
         android:label="YT İndirici"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.YTIndirici">
+        android:theme="@style/Theme.YTIndirici"
+        android:usesCleartextTraffic="false">
+
+        <activity
+            android:name=".OynaticiEtkinligi"
+            android:exported="false"
+            android:configChanges="keyboardHidden|orientation|screenSize"
+            android:theme="@style/Theme.YTIndirici" />
+
         <activity
             android:name=".AnaEtkinlik"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -26,5 +39,10 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".IndirmeHizmeti"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>
