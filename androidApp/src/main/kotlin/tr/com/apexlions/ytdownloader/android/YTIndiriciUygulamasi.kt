@@ -7,16 +7,27 @@ import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 
 class YTIndiriciUygulamasi : Application() {
+    lateinit var denetleyici: AndroidUygulamaDenetleyicisi
+        private set
+
+    @Volatile
+    private var motorHazir = false
+
     override fun onCreate() {
         super.onCreate()
+        denetleyici = AndroidUygulamaDenetleyicisi(this)
         Thread {
-            runCatching {
-                YoutubeDL.getInstance().init(this)
-                FFmpeg.getInstance().init(this)
-                Aria2c.getInstance().init(this)
-            }.onFailure { hata ->
-                Log.e("YTİndirici", "İndirme motoru başlatılamadı", hata)
-            }
+            runCatching { motoruHazirla() }
+                .onFailure { Log.e("YTİndirici", "İndirme motoru başlatılamadı", it) }
         }.start()
+    }
+
+    @Synchronized
+    fun motoruHazirla() {
+        if (motorHazir) return
+        YoutubeDL.getInstance().init(this)
+        FFmpeg.getInstance().init(this)
+        Aria2c.getInstance().init(this)
+        motorHazir = true
     }
 }
