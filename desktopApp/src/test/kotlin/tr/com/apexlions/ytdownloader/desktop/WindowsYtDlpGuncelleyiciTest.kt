@@ -6,9 +6,9 @@ import kotlin.test.assertTrue
 
 class WindowsMotorKurucusuTest {
     @Test
-    fun varsayilanMotorDiziniWindowsYoluylaBiter() {
+    fun varsayilanMotorDiziniBpcYoluylaBiter() {
         val yol = WindowsMotorKurucusu.varsayilanMotorDizini()
         assertEquals("motor", yol.fileName.toString())
-        assertTrue(yol.toString().contains("YT İndirici"))
+        assertTrue(yol.toString().contains("BPC"))
     }
 }
