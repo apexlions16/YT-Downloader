@@ -93,6 +93,55 @@ jobs:
           echo "Android 0.3.1 derlemesi başarısız oldu. Türkçe günlük artefakt olarak yüklendi."
           exit 1
 
+  pr-ci-sonucunu-kaydet:
+    name: PR CI sonucunu dala kaydet
+    if: always() && github.event_name == 'pull_request'
+    needs:
+      - android-uygulamalarini-derle
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: PR dalını al
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Android derleme günlüğünü al
+        uses: actions/download-artifact@v4
+        with:
+          name: Android-Derleme-Gunlugu-0.3.1
+          path: ci-gunluk
+
+      - name: Sonucu okunabilir dosyaya yaz
+        shell: bash
+        run: |
+          mkdir -p ci
+          {
+            echo "run_id=${{ github.run_id }}"
+            echo "run_url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "result=${{ needs.android-uygulamalarini-derle.result }}"
+            echo "commit=${{ github.event.pull_request.head.sha }}"
+            echo
+            echo "===== android-derleme.log son 160 satır ====="
+            tail -n 160 ci-gunluk/android-derleme.log 2>/dev/null || true
+            echo
+            echo "===== SHA-256 ====="
+            cat ci-gunluk/android-sha256.txt 2>/dev/null || true
+          } > ci/android-0.3.1-status.txt
+
+      - name: CI sonucunu PR dalına işle
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci/android-0.3.1-status.txt
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Android CI sonucunu kaydet [skip ci]"
+          git push origin "HEAD:${{ github.head_ref }}"
+
   github-release-olustur:
     name: Bmobil 0.3.1 GitHub Release oluştur
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
