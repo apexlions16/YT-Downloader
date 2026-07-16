@@ -29,6 +29,7 @@ class AnaEtkinlik : ComponentActivity() {
                     diskSecimiDestekleniyor = false,
                     depolamaAciklamasi = "Uygulamaya özel medya alanı: $medyaDizini",
                 ),
+                ilkBaglanti = paylasilanBaglanti.orEmpty(),
             )
         }
     }
