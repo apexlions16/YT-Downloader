@@ -9,28 +9,35 @@ android {
     compileSdk = (findProperty("android.compileSdk") as String).toInt()
 
     defaultConfig {
-        applicationId = "tr.com.apexlions.ytdownloader"
         minSdk = (findProperty("android.minSdk") as String).toInt()
         targetSdk = (findProperty("android.targetSdk") as String).toInt()
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
         }
     }
 
-    buildFeatures {
-        compose = true
+    flavorDimensions += "depolama"
+    productFlavors {
+        create("normal") {
+            dimension = "depolama"
+            applicationId = "tr.com.apexlions.bmobil"
+            buildConfigField("boolean", "DEVELOPER_SURUMU", "false")
+            resValue("string", "app_name", "Bmobil")
+        }
+        create("developer") {
+            dimension = "depolama"
+            applicationId = "tr.com.apexlions.bmobil.developer"
+            buildConfigField("boolean", "DEVELOPER_SURUMU", "true")
+            resValue("string", "app_name", "Bmobil Developer")
+        }
     }
 
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
-            isUniversalApk = true
-        }
+    buildFeatures {
+        compose = true
+        buildConfig = true
     }
 
     signingConfigs {
