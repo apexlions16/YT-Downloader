@@ -1,0 +1,131 @@
+run_id=29542316897
+run_url=https://github.com/apexlions16/YT-Downloader/actions/runs/29542316897
+android_result=success
+release_result=failure
+commit=942e7db5bcd76b6621663916a490cb88ff81626a
+
+===== android-derleme.log son 120 satır =====
+> Task :androidApp:processNormalReleaseResources FROM-CACHE
+> Task :androidApp:compileNormalReleaseKotlin FROM-CACHE
+> Task :sharedUI:generateReleaseLintModel
+> Task :sharedUI:prepareLintJarForPublish
+> Task :sharedUI:stripReleaseDebugSymbols NO-SOURCE
+> Task :sharedUI:copyReleaseJniLibsProjectAndLocalJars
+> Task :sharedUI:extractDeepLinksForAarRelease FROM-CACHE
+> Task :sharedUI:extractReleaseAnnotations FROM-CACHE
+> Task :sharedUI:mergeReleaseGeneratedProguardFiles
+> Task :sharedUI:mergeReleaseConsumerProguardFiles
+> Task :androidApp:compileNormalReleaseJavaWithJavac FROM-CACHE
+> Task :sharedUI:lintVitalAnalyzeRelease FROM-CACHE
+> Task :androidApp:processNormalReleaseJavaRes
+> Task :androidApp:bundleNormalReleaseClassesToCompileJar
+> Task :androidApp:bundleNormalReleaseClassesToRuntimeJar
+> Task :sharedUI:writeReleaseLintModelMetadata
+> Task :androidApp:checkDeveloperReleaseAarMetadata
+> Task :sharedUI:generateReleaseLintVitalModel
+> Task :sharedUI:mergeReleaseJavaResource
+> Task :sharedUI:syncReleaseLibJars FROM-CACHE
+> Task :sharedUI:bundleReleaseLocalLintAar
+> Task :androidApp:compileNormalReleaseUnitTestKotlin FROM-CACHE
+> Task :androidApp:compileNormalReleaseUnitTestJavaWithJavac NO-SOURCE
+> Task :androidApp:processNormalReleaseUnitTestJavaRes
+> Task :androidApp:testNormalReleaseUnitTest FROM-CACHE
+> Task :androidApp:processDeveloperReleaseMainManifest FROM-CACHE
+> Task :androidApp:processDeveloperReleaseManifest FROM-CACHE
+> Task :androidApp:processDeveloperReleaseManifestForPackage FROM-CACHE
+> Task :androidApp:processDeveloperReleaseResources FROM-CACHE
+> Task :androidApp:compileDeveloperReleaseKotlin FROM-CACHE
+> Task :androidApp:compileDeveloperReleaseJavaWithJavac FROM-CACHE
+> Task :androidApp:bundleDeveloperReleaseClassesToRuntimeJar
+> Task :androidApp:processDeveloperReleaseJavaRes
+> Task :androidApp:bundleDeveloperReleaseClassesToCompileJar
+> Task :androidApp:compileDeveloperReleaseUnitTestKotlin FROM-CACHE
+> Task :androidApp:compileDeveloperReleaseUnitTestJavaWithJavac NO-SOURCE
+> Task :androidApp:processDeveloperReleaseUnitTestJavaRes
+> Task :androidApp:testDeveloperReleaseUnitTest FROM-CACHE
+> Task :androidApp:dexBuilderNormalRelease FROM-CACHE
+> Task :androidApp:mergeDexNormalRelease FROM-CACHE
+> Task :androidApp:mergeNormalReleaseNativeLibs
+> Task :androidApp:mergeNormalReleaseArtProfile
+> Task :androidApp:mergeNormalReleaseGlobalSynthetics FROM-CACHE
+
+> Task :androidApp:stripNormalReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so, libaria2c.so, libaria2c.zip.so, libffmpeg.so, libffmpeg.zip.so, libffprobe.so, libpython.so, libpython.zip.so, libqjs.so. Run with --info option to learn more.
+
+> Task :androidApp:compileNormalReleaseArtProfile FROM-CACHE
+> Task :androidApp:extractNormalReleaseNativeSymbolTables FROM-CACHE
+> Task :androidApp:mergeNormalReleaseNativeDebugMetadata NO-SOURCE
+> Task :androidApp:mergeNormalReleaseAssets
+> Task :androidApp:compressNormalReleaseAssets FROM-CACHE
+> Task :androidApp:generateNormalReleaseLintVitalReportModel
+> Task :androidApp:lintVitalAnalyzeNormalRelease FROM-CACHE
+> Task :androidApp:optimizeNormalReleaseResources FROM-CACHE
+> Task :androidApp:sdkNormalReleaseDependencyData
+> Task :androidApp:mergeNormalReleaseJavaResource
+> Task :androidApp:validateSigningNormalRelease
+> Task :androidApp:writeNormalReleaseAppMetadata
+> Task :androidApp:writeNormalReleaseSigningConfigVersions
+> Task :androidApp:mergeDeveloperReleaseJniLibFolders
+> Task :androidApp:mergeDeveloperReleaseArtProfile
+> Task :androidApp:desugarDeveloperReleaseFileDependencies FROM-CACHE
+> Task :androidApp:dexBuilderDeveloperRelease FROM-CACHE
+> Task :androidApp:mergeDeveloperReleaseGlobalSynthetics FROM-CACHE
+> Task :androidApp:mergeDeveloperReleaseStartupProfile
+> Task :androidApp:mergeDeveloperReleaseShaders
+> Task :androidApp:compileDeveloperReleaseShaders NO-SOURCE
+> Task :androidApp:generateDeveloperReleaseAssets UP-TO-DATE
+> Task :androidApp:mergeDeveloperReleaseAssets
+> Task :androidApp:compressDeveloperReleaseAssets FROM-CACHE
+> Task :androidApp:extractDeveloperReleaseVersionControlInfo
+> Task :androidApp:checkDeveloperReleaseDuplicateClasses
+> Task :androidApp:generateDeveloperReleaseLintVitalReportModel
+> Task :androidApp:mergeExtDexDeveloperRelease FROM-CACHE
+> Task :androidApp:mergeDeveloperReleaseNativeLibs
+> Task :androidApp:mergeDexDeveloperRelease FROM-CACHE
+> Task :androidApp:compileDeveloperReleaseArtProfile FROM-CACHE
+> Task :androidApp:lintVitalAnalyzeDeveloperRelease FROM-CACHE
+
+> Task :androidApp:stripDeveloperReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so, libaria2c.so, libaria2c.zip.so, libffmpeg.so, libffmpeg.zip.so, libffprobe.so, libpython.so, libpython.zip.so, libqjs.so. Run with --info option to learn more.
+
+> Task :androidApp:extractDeveloperReleaseNativeSymbolTables FROM-CACHE
+> Task :androidApp:mergeDeveloperReleaseNativeDebugMetadata NO-SOURCE
+> Task :androidApp:optimizeDeveloperReleaseResources FROM-CACHE
+> Task :androidApp:mergeDeveloperReleaseJavaResource
+> Task :androidApp:collectDeveloperReleaseDependencies
+> Task :androidApp:sdkDeveloperReleaseDependencyData
+> Task :androidApp:validateSigningDeveloperRelease
+> Task :androidApp:writeDeveloperReleaseAppMetadata
+> Task :androidApp:writeDeveloperReleaseSigningConfigVersions
+> Task :androidApp:lintVitalReportDeveloperRelease
+> Task :androidApp:lintVitalReportNormalRelease
+> Task :androidApp:lintVitalNormalRelease
+> Task :androidApp:lintVitalDeveloperRelease
+
+> Task :androidApp:packageNormalRelease
+PackagingOptions.jniLibs.useLegacyPackaging should be set to true because android:extractNativeLibs is set to "true" in AndroidManifest.xml.
+
+> Task :androidApp:createNormalReleaseApkListingFileRedirect
+> Task :androidApp:assembleNormalRelease
+
+> Task :androidApp:packageDeveloperRelease
+PackagingOptions.jniLibs.useLegacyPackaging should be set to true because android:extractNativeLibs is set to "true" in AndroidManifest.xml.
+
+> Task :androidApp:createDeveloperReleaseApkListingFileRedirect
+> Task :androidApp:assembleDeveloperRelease
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/android-derleme-1784244682446.json
+
+[Incubating] Problems report is available at: file:///home/runner/work/YT-Downloader/YT-Downloader/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.14.2/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 33s
+175 actionable tasks: 89 executed, 86 from cache
+
+===== SHA-256 =====
+1a08e2916f0c2a847cf3e5c27d43af58cc8258db5df726da721f394c54310b33  dagitim/android/Bmobil-0.3.1.apk
+6c1d07948777bc3b3405557a149e69d8ea5d226e99a828510fdf08877aa48744  dagitim/android/Bmobil-Developer-0.3.1.apk
