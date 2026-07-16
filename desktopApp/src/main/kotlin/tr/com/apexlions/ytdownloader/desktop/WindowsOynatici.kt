@@ -23,13 +23,9 @@ import javax.swing.JFrame
 import javax.swing.SwingUtilities
 
 object WindowsOynatici {
-    @Volatile
-    private var javafxHazir = false
-
     fun oynat(baslik: String, dosya: File) {
         SwingUtilities.invokeLater {
             val panel = JFXPanel()
-            javafxHazir = true
             val pencere = JFrame("YT İndirici • $baslik").apply {
                 defaultCloseOperation = JFrame.DISPOSE_ON_CLOSE
                 layout = BorderLayout()
@@ -48,12 +44,7 @@ object WindowsOynatici {
             Platform.runLater {
                 val medya = Media(dosya.toURI().toString())
                 val oynatici = MediaPlayer(medya)
-                val goruntu = MediaView(oynatici).apply {
-                    isPreserveRatio = true
-                    fitWidthProperty().bind(panel.widthProperty().asObject())
-                    fitHeightProperty().bind(panel.heightProperty().subtract(80).asObject())
-                }
-
+                val goruntu = MediaView(oynatici).apply { isPreserveRatio = true }
                 val oynatDugmesi = Button("Duraklat")
                 val zaman = Slider(0.0, 100.0, 0.0).apply { isDisable = true }
                 val sureMetni = Label("00:00 / 00:00")
@@ -75,8 +66,7 @@ object WindowsOynatici {
                 }
 
                 oynatici.setOnReady {
-                    val toplam = oynatici.totalDuration.toSeconds().coerceAtLeast(0.0)
-                    zaman.max = toplam
+                    zaman.max = oynatici.totalDuration.toSeconds().coerceAtLeast(0.0)
                     zaman.isDisable = false
                     oynatici.play()
                 }
@@ -103,7 +93,10 @@ object WindowsOynatici {
                     center = goruntu
                     bottom = kontroller
                 }
-                panel.scene = Scene(kok, 1000.0, 620.0)
+                val sahne = Scene(kok, 1000.0, 620.0)
+                goruntu.fitWidthProperty().bind(sahne.widthProperty())
+                goruntu.fitHeightProperty().bind(sahne.heightProperty().subtract(80.0))
+                panel.scene = sahne
 
                 pencere.addWindowListener(object : WindowAdapter() {
                     override fun windowClosing(e: WindowEvent?) {
