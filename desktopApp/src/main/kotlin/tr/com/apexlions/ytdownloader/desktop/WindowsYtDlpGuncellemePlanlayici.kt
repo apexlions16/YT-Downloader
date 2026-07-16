@@ -16,8 +16,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 object WindowsYtDlpGuncellemePlanlayici {
     private val baslatildi = AtomicBoolean(false)
-    private val zamanlayici = Executors.newSingleThreadScheduledExecutor { is ->
-        Thread(is, "yt-dlp-guncelleme").apply { isDaemon = true }
+    private val zamanlayici = Executors.newSingleThreadScheduledExecutor { islem ->
+        Thread(islem, "yt-dlp-guncelleme").apply { isDaemon = true }
     }
 
     fun baslat() {
