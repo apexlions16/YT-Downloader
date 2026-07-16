@@ -1,0 +1,170 @@
+run_id=29541861481
+run_url=https://github.com/apexlions16/YT-Downloader/actions/runs/29541861481
+result=success
+commit=0fb024c45668cb1de503b6b6ff2c4f107104f609
+
+===== android-derleme.log son 160 satır =====
+> Task :sharedUI:javaPreCompileReleaseUnitTest FROM-CACHE
+> Task :sharedUI:compileReleaseUnitTestJavaWithJavac NO-SOURCE
+> Task :sharedUI:processReleaseJavaRes
+> Task :sharedUI:processReleaseUnitTestJavaRes
+> Task :androidApp:mapDeveloperReleaseSourceSetPaths
+> Task :sharedUI:testReleaseUnitTest FROM-CACHE
+> Task :sharedUI:allTests
+> Task :sharedUI:writeReleaseAarMetadata
+> Task :sharedUI:extractDeepLinksRelease FROM-CACHE
+> Task :sharedUI:processReleaseManifest FROM-CACHE
+> Task :sharedUI:compileReleaseLibraryResources FROM-CACHE
+> Task :sharedUI:mergeReleaseJniLibFolders
+> Task :sharedUI:mergeReleaseNativeLibs NO-SOURCE
+> Task :androidApp:mergeDeveloperReleaseResources FROM-CACHE
+> Task :sharedUI:copyReleaseJniLibsProjectOnly
+> Task :sharedUI:prepareReleaseArtProfile
+> Task :sharedUI:mergeReleaseShaders
+> Task :sharedUI:compileReleaseShaders NO-SOURCE
+> Task :sharedUI:copyReleaseComposeResourcesToAndroidAssets
+> Task :sharedUI:generateReleaseAssets UP-TO-DATE
+> Task :sharedUI:releaseAssetsCopyForAGP NO-SOURCE
+> Task :sharedUI:mergeReleaseAssets
+> Task :sharedUI:createFullJarRelease
+> Task :sharedUI:bundleLibRuntimeToDirRelease
+> Task :sharedUI:extractProguardFiles
+> Task :androidApp:checkNormalReleaseAarMetadata
+
+> Task :androidApp:processNormalReleaseMainManifest
+/home/runner/work/YT-Downloader/YT-Downloader/androidApp/src/main/AndroidManifest.xml:15:9-41 Warning:
+	android:extractNativeLibs should not be specified in this source AndroidManifest.xml file. See https://d.android.com/guide/topics/manifest/application-element#extractNativeLibs for more information.
+The AGP Upgrade Assistant can remove the attribute from the AndroidManifest.xml file and update the build file accordingly. See https://d.android.com/studio/build/agp-upgrade-assistant for more information.
+
+> Task :androidApp:processNormalReleaseManifest
+> Task :sharedUI:generateReleaseLintModel
+> Task :androidApp:checkDeveloperReleaseAarMetadata
+> Task :sharedUI:stripReleaseDebugSymbols NO-SOURCE
+> Task :sharedUI:prepareLintJarForPublish
+> Task :sharedUI:extractDeepLinksForAarRelease FROM-CACHE
+> Task :sharedUI:copyReleaseJniLibsProjectAndLocalJars
+
+> Task :androidApp:processDeveloperReleaseMainManifest
+/home/runner/work/YT-Downloader/YT-Downloader/androidApp/src/main/AndroidManifest.xml:15:9-41 Warning:
+	android:extractNativeLibs should not be specified in this source AndroidManifest.xml file. See https://d.android.com/guide/topics/manifest/application-element#extractNativeLibs for more information.
+The AGP Upgrade Assistant can remove the attribute from the AndroidManifest.xml file and update the build file accordingly. See https://d.android.com/studio/build/agp-upgrade-assistant for more information.
+
+> Task :androidApp:processNormalReleaseManifestForPackage
+> Task :androidApp:processDeveloperReleaseManifest
+> Task :androidApp:processDeveloperReleaseManifestForPackage
+> Task :androidApp:mergeNormalReleaseNativeLibs
+> Task :sharedUI:extractReleaseAnnotations FROM-CACHE
+> Task :sharedUI:mergeReleaseGeneratedProguardFiles
+> Task :sharedUI:mergeReleaseConsumerProguardFiles
+> Task :androidApp:mergeNormalReleaseArtProfile
+> Task :androidApp:processNormalReleaseResources
+> Task :androidApp:processDeveloperReleaseResources
+> Task :sharedUI:lintVitalAnalyzeRelease FROM-CACHE
+> Task :sharedUI:writeReleaseLintModelMetadata
+> Task :sharedUI:generateReleaseLintVitalModel
+> Task :sharedUI:mergeReleaseJavaResource
+> Task :sharedUI:syncReleaseLibJars FROM-CACHE
+> Task :sharedUI:bundleReleaseLocalLintAar
+
+> Task :androidApp:stripNormalReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so, libaria2c.so, libaria2c.zip.so, libffmpeg.so, libffmpeg.zip.so, libffprobe.so, libpython.so, libpython.zip.so, libqjs.so. Run with --info option to learn more.
+
+> Task :androidApp:mergeNormalReleaseAssets
+> Task :androidApp:extractNormalReleaseNativeSymbolTables FROM-CACHE
+> Task :androidApp:mergeNormalReleaseNativeDebugMetadata NO-SOURCE
+> Task :androidApp:compressNormalReleaseAssets FROM-CACHE
+> Task :androidApp:extractProguardFiles
+> Task :androidApp:collectNormalReleaseDependencies
+> Task :androidApp:sdkNormalReleaseDependencyData
+> Task :androidApp:optimizeNormalReleaseResources
+> Task :androidApp:validateSigningNormalRelease
+> Task :androidApp:writeNormalReleaseAppMetadata
+> Task :androidApp:writeNormalReleaseSigningConfigVersions
+> Task :androidApp:mergeDeveloperReleaseJniLibFolders
+> Task :androidApp:mergeDeveloperReleaseArtProfile
+> Task :androidApp:desugarDeveloperReleaseFileDependencies FROM-CACHE
+> Task :androidApp:checkDeveloperReleaseDuplicateClasses
+> Task :androidApp:mergeDeveloperReleaseStartupProfile
+> Task :androidApp:mergeExtDexDeveloperRelease FROM-CACHE
+> Task :androidApp:mergeDeveloperReleaseShaders
+> Task :androidApp:compileDeveloperReleaseShaders NO-SOURCE
+> Task :androidApp:generateDeveloperReleaseAssets UP-TO-DATE
+> Task :androidApp:mergeDeveloperReleaseAssets
+> Task :androidApp:compressDeveloperReleaseAssets FROM-CACHE
+> Task :androidApp:extractDeveloperReleaseVersionControlInfo
+> Task :androidApp:mergeDeveloperReleaseNativeLibs
+> Task :androidApp:optimizeDeveloperReleaseResources
+
+> Task :androidApp:stripDeveloperReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so, libaria2c.so, libaria2c.zip.so, libffmpeg.so, libffmpeg.zip.so, libffprobe.so, libpython.so, libpython.zip.so, libqjs.so. Run with --info option to learn more.
+
+> Task :androidApp:collectDeveloperReleaseDependencies
+> Task :androidApp:extractDeveloperReleaseNativeSymbolTables FROM-CACHE
+> Task :androidApp:mergeDeveloperReleaseNativeDebugMetadata NO-SOURCE
+> Task :androidApp:sdkDeveloperReleaseDependencyData
+> Task :androidApp:validateSigningDeveloperRelease
+> Task :androidApp:writeDeveloperReleaseAppMetadata
+> Task :androidApp:writeDeveloperReleaseSigningConfigVersions
+> Task :androidApp:compileNormalReleaseKotlin
+> Task :androidApp:compileDeveloperReleaseKotlin
+> Task :androidApp:compileNormalReleaseJavaWithJavac
+> Task :androidApp:bundleNormalReleaseClassesToCompileJar
+> Task :androidApp:processNormalReleaseJavaRes
+> Task :androidApp:bundleNormalReleaseClassesToRuntimeJar
+> Task :androidApp:compileDeveloperReleaseJavaWithJavac
+> Task :androidApp:bundleDeveloperReleaseClassesToRuntimeJar
+> Task :androidApp:processDeveloperReleaseJavaRes
+> Task :androidApp:bundleDeveloperReleaseClassesToCompileJar
+> Task :androidApp:compileNormalReleaseUnitTestKotlin
+> Task :androidApp:dexBuilderNormalRelease
+> Task :androidApp:compileNormalReleaseUnitTestJavaWithJavac NO-SOURCE
+> Task :androidApp:processNormalReleaseUnitTestJavaRes
+> Task :androidApp:testNormalReleaseUnitTest
+> Task :androidApp:mergeNormalReleaseGlobalSynthetics FROM-CACHE
+> Task :androidApp:generateNormalReleaseLintVitalReportModel
+> Task :androidApp:compileDeveloperReleaseUnitTestKotlin
+> Task :androidApp:compileDeveloperReleaseUnitTestJavaWithJavac NO-SOURCE
+> Task :androidApp:processDeveloperReleaseUnitTestJavaRes
+> Task :androidApp:testDeveloperReleaseUnitTest
+> Task :androidApp:mergeNormalReleaseJavaResource
+> Task :androidApp:dexBuilderDeveloperRelease
+> Task :androidApp:mergeDeveloperReleaseGlobalSynthetics FROM-CACHE
+> Task :androidApp:generateDeveloperReleaseLintVitalReportModel
+> Task :androidApp:mergeDexNormalRelease
+> Task :androidApp:mergeDexDeveloperRelease
+> Task :androidApp:compileNormalReleaseArtProfile
+> Task :androidApp:compileDeveloperReleaseArtProfile
+> Task :androidApp:mergeDeveloperReleaseJavaResource
+> Task :androidApp:lintVitalAnalyzeDeveloperRelease
+> Task :androidApp:lintVitalAnalyzeNormalRelease
+> Task :androidApp:lintVitalReportNormalRelease
+> Task :androidApp:lintVitalReportDeveloperRelease
+> Task :androidApp:lintVitalNormalRelease
+> Task :androidApp:lintVitalDeveloperRelease
+
+> Task :androidApp:packageNormalRelease
+PackagingOptions.jniLibs.useLegacyPackaging should be set to true because android:extractNativeLibs is set to "true" in AndroidManifest.xml.
+
+> Task :androidApp:packageDeveloperRelease
+PackagingOptions.jniLibs.useLegacyPackaging should be set to true because android:extractNativeLibs is set to "true" in AndroidManifest.xml.
+
+> Task :androidApp:createDeveloperReleaseApkListingFileRedirect
+> Task :androidApp:assembleDeveloperRelease
+> Task :androidApp:createNormalReleaseApkListingFileRedirect
+> Task :androidApp:assembleNormalRelease
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/android-derleme-1784243982202.json
+
+[Incubating] Problems report is available at: file:///home/runner/work/YT-Downloader/YT-Downloader/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.14.2/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 1m 30s
+175 actionable tasks: 117 executed, 58 from cache
+
+===== SHA-256 =====
+b424a0acee4ba9eedf30f098783353e31f6cf5dda9f494532112d4457c588518  dagitim/android/Bmobil-0.3.1.apk
+b593bffb4fbbfc714725a9bb2def122fcf596801faefafa59055b7f17c7d8dce  dagitim/android/Bmobil-Developer-0.3.1.apk
