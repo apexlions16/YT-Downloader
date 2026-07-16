@@ -207,6 +207,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      issues: write
     steps:
       - name: Bmobil paketini al
         uses: actions/download-artifact@v4
@@ -276,3 +277,10 @@ jobs:
             release/BPC-Developer-0.3.0.exe
             release/SHA256SUMS.txt
           fail_on_unmatched_files: true
+
+      - name: Geliştirme günlüğüne Release bağlantısı yaz
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh issue comment 3 --body "✅ **Bmobil ve BPC 0.3.0 Release yayımlandı.**\n\nAltı kurulum paketi ve SHA-256 listesi: https://github.com/${{ github.repository }}/releases/tag/v0.3.0\n\nAna dal Action çalışması: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
