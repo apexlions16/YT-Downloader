@@ -8,6 +8,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: yt-indirici-tam-surum-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
