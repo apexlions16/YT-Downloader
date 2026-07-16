@@ -1,0 +1,126 @@
+name: Android ve Windows Tam Sürüm Derlemesi
+
+on:
+  push:
+    branches:
+      - main
+      - "agent/**"
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: yt-indirici-tam-surum-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  android-uygulamasini-derle:
+    name: Android APK paketlerini oluştur
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: JDK 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android araçlarını kur
+        uses: android-actions/setup-android@v3
+
+      - name: Gradle 8.14.2 kur
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.2"
+
+      - name: Android testlerini çalıştır ve APK paketlerini derle
+        id: android-derleme
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle :sharedUI:allTests :androidApp:assembleRelease --stacktrace --console=plain 2>&1 | tee android-derleme.log
+
+      - name: Android derleme günlüğünü yükle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-Derleme-Gunlugu
+          path: android-derleme.log
+          if-no-files-found: error
+
+      - name: Android APK paketlerini yükle
+        if: steps.android-derleme.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: YT-Indirici-Android-0.2.0
+          path: androidApp/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      - name: Android derleme sonucunu doğrula
+        if: steps.android-derleme.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "Android derlemesi başarısız oldu. Derleme günlüğü artefakt olarak yüklendi."
+          exit 1
+
+  windows-uygulamasini-derle:
+    name: Windows MSI ve EXE oluştur
+    runs-on: windows-latest
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: JDK 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Gradle 8.14.2 kur
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.2"
+
+      - name: Windows testlerini çalıştır, MSI ve EXE oluştur
+        id: windows-derleme
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          & gradle :desktopApp:test :desktopApp:packageMsi :desktopApp:packageExe --stacktrace --console=plain *>&1 | Tee-Object -FilePath windows-derleme.log
+          exit $LASTEXITCODE
+
+      - name: Windows derleme günlüğünü yükle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-Derleme-Gunlugu
+          path: windows-derleme.log
+          if-no-files-found: error
+
+      - name: Windows MSI paketini yükle
+        if: steps.windows-derleme.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: YT-Indirici-Windows-MSI-0.2.0
+          path: desktopApp/build/compose/binaries/main/msi/*.msi
+          if-no-files-found: error
+
+      - name: Windows EXE paketini yükle
+        if: steps.windows-derleme.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: YT-Indirici-Windows-EXE-0.2.0
+          path: desktopApp/build/compose/binaries/main/exe/*.exe
+          if-no-files-found: error
+
+      - name: Windows derleme sonucunu doğrula
+        if: steps.windows-derleme.outcome == 'failure'
+        shell: pwsh
+        run: |
+          Write-Host "Windows derlemesi başarısız oldu. Derleme günlüğü artefakt olarak yüklendi."
+          exit 1
