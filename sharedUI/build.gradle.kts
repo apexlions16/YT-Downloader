@@ -10,20 +10,28 @@ kotlin {
     jvm("desktop")
 
     sourceSets {
-        commonMain.dependencies {
-            implementation(compose.runtime)
-            implementation(compose.foundation)
-            implementation(compose.material3)
-            implementation(compose.ui)
+        named("commonMain") {
+            dependencies {
+                implementation(compose.runtime)
+                implementation(compose.foundation)
+                implementation(compose.material3)
+                implementation(compose.ui)
+            }
         }
-        commonTest.dependencies {
-            implementation(kotlin("test"))
+        named("commonTest") {
+            dependencies {
+                implementation(kotlin("test"))
+            }
         }
-        androidMain.dependencies {
-            implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.1")
+        named("androidMain") {
+            dependencies {
+                implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.1")
+            }
         }
-        desktopMain.dependencies {
-            implementation(compose.desktop.common)
+        named("desktopMain") {
+            dependencies {
+                implementation(compose.desktop.common)
+            }
         }
     }
 }
