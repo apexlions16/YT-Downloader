@@ -1,4 +1,4 @@
-name: Android ve Windows Tam Sürüm Derlemesi
+name: Bmobil ve BPC 0.3.0 Derlemesi
 
 on:
   push:
@@ -9,15 +9,15 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: yt-indirici-tam-surum-${{ github.ref }}
+  group: bmobil-bpc-0-3-0-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  android-uygulamasini-derle:
-    name: Android APK paketlerini oluştur
+  android-uygulamalarini-derle:
+    name: Bmobil APK paketlerini oluştur
     runs-on: ubuntu-latest
     steps:
       - name: Kaynak kodu al
@@ -37,40 +37,61 @@ jobs:
         with:
           gradle-version: "8.14.2"
 
-      - name: Android testlerini çalıştır ve APK paketlerini derle
+      - name: Bmobil ve Bmobil Developer APK'larını derle
         id: android-derleme
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
-          gradle :sharedUI:allTests :androidApp:assembleRelease --stacktrace --console=plain 2>&1 | tee android-derleme.log
+          gradle :sharedUI:allTests :androidApp:assembleNormalRelease :androidApp:assembleDeveloperRelease --stacktrace --console=plain 2>&1 | tee android-derleme.log
+
+      - name: Android paketlerini adlandır
+        if: steps.android-derleme.outcome == 'success'
+        shell: bash
+        run: |
+          mkdir -p dagitim/android
+          cp androidApp/build/outputs/apk/normal/release/*.apk dagitim/android/Bmobil-0.3.0.apk
+          cp androidApp/build/outputs/apk/developer/release/*.apk dagitim/android/Bmobil-Developer-0.3.0.apk
+          sha256sum dagitim/android/* | tee android-sha256.txt
 
       - name: Android derleme günlüğünü yükle
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Android-Derleme-Gunlugu
-          path: android-derleme.log
-          if-no-files-found: error
+          name: Android-Derleme-Gunlugu-0.3.0
+          path: |
+            android-derleme.log
+            android-sha256.txt
+          if-no-files-found: warn
 
-      - name: Android APK paketlerini yükle
+      - name: Bmobil paketini yükle
         if: steps.android-derleme.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: YT-Indirici-Android-0.2.0
-          path: androidApp/build/outputs/apk/release/*.apk
+          name: Bmobil-0.3.0
+          path: dagitim/android/Bmobil-0.3.0.apk
+          if-no-files-found: error
+
+      - name: Bmobil Developer paketini yükle
+        if: steps.android-derleme.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bmobil-Developer-0.3.0
+          path: dagitim/android/Bmobil-Developer-0.3.0.apk
           if-no-files-found: error
 
       - name: Android derleme sonucunu doğrula
         if: steps.android-derleme.outcome == 'failure'
         shell: bash
         run: |
-          echo "Android derlemesi başarısız oldu. Derleme günlüğü artefakt olarak yüklendi."
+          echo "Android derlemesi başarısız oldu. Türkçe günlük artefakt olarak yüklendi."
           exit 1
 
-  windows-uygulamasini-derle:
-    name: Windows MSI ve EXE oluştur
+  windows-uygulamalarini-derle:
+    name: BPC MSI ve EXE paketlerini oluştur
     runs-on: windows-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Kaynak kodu al
         uses: actions/checkout@v4
@@ -86,41 +107,218 @@ jobs:
         with:
           gradle-version: "8.14.2"
 
-      - name: Windows testlerini çalıştır, MSI ve EXE oluştur
+      - name: Windows motor bileşenlerini indir ve doğrula
+        id: motor-hazirla
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $ProgressPreference = "SilentlyContinue"
+          $headers = @{
+            Authorization = "Bearer $env:GITHUB_TOKEN"
+            Accept = "application/vnd.github+json"
+            "User-Agent" = "BPC-GitHub-Actions"
+          }
+          $motor = Join-Path $PWD "windows-motor-hazir"
+          $gecici = Join-Path $PWD "windows-motor-gecici"
+          New-Item -ItemType Directory -Force -Path $motor, $gecici | Out-Null
+
+          Write-Host "yt-dlp Nightly indiriliyor..."
+          $ytDlp = Join-Path $motor "yt-dlp.exe"
+          Invoke-WebRequest -Headers $headers -Uri "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.exe" -OutFile $ytDlp
+          $toplamlar = Invoke-WebRequest -Headers $headers -Uri "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/SHA2-256SUMS"
+          $beklenen = (($toplamlar.Content -split "`n") | Where-Object { $_ -match "yt-dlp\.exe\s*$" } | Select-Object -First 1) -split "\s+" | Select-Object -First 1
+          $gercek = (Get-FileHash -Algorithm SHA256 $ytDlp).Hash.ToLowerInvariant()
+          if ([string]::IsNullOrWhiteSpace($beklenen) -or $gercek -ne $beklenen.Trim().ToLowerInvariant()) {
+            throw "yt-dlp SHA-256 doğrulaması başarısız"
+          }
+
+          Write-Host "FFmpeg ve FFprobe indiriliyor..."
+          $ffSurum = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/yt-dlp/FFmpeg-Builds/releases/latest"
+          $ffVarlik = $ffSurum.assets | Where-Object {
+            $_.name -match "win64.*gpl.*\.zip$" -and $_.name -notmatch "shared"
+          } | Select-Object -First 1
+          if (-not $ffVarlik) { throw "Uygun FFmpeg Windows paketi bulunamadı" }
+          $ffArsiv = Join-Path $gecici $ffVarlik.name
+          Invoke-WebRequest -Headers $headers -Uri $ffVarlik.browser_download_url -OutFile $ffArsiv
+          if ($ffVarlik.digest -and $ffVarlik.digest.StartsWith("sha256:")) {
+            $beklenenFf = $ffVarlik.digest.Substring(7).ToLowerInvariant()
+            $gercekFf = (Get-FileHash -Algorithm SHA256 $ffArsiv).Hash.ToLowerInvariant()
+            if ($gercekFf -ne $beklenenFf) { throw "FFmpeg SHA-256 doğrulaması başarısız" }
+          }
+          $ffCikarma = Join-Path $gecici "ffmpeg"
+          Expand-Archive -Path $ffArsiv -DestinationPath $ffCikarma -Force
+          Copy-Item (Get-ChildItem $ffCikarma -Recurse -Filter ffmpeg.exe | Select-Object -First 1).FullName (Join-Path $motor "ffmpeg.exe")
+          Copy-Item (Get-ChildItem $ffCikarma -Recurse -Filter ffprobe.exe | Select-Object -First 1).FullName (Join-Path $motor "ffprobe.exe")
+
+          Write-Host "Deno indiriliyor..."
+          $denoSurum = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/denoland/deno/releases/latest"
+          $denoVarlik = $denoSurum.assets | Where-Object { $_.name -eq "deno-x86_64-pc-windows-msvc.zip" } | Select-Object -First 1
+          if (-not $denoVarlik) { throw "Deno Windows paketi bulunamadı" }
+          $denoArsiv = Join-Path $gecici $denoVarlik.name
+          Invoke-WebRequest -Headers $headers -Uri $denoVarlik.browser_download_url -OutFile $denoArsiv
+          $denoCikarma = Join-Path $gecici "deno"
+          Expand-Archive -Path $denoArsiv -DestinationPath $denoCikarma -Force
+          Copy-Item (Get-ChildItem $denoCikarma -Recurse -Filter deno.exe | Select-Object -First 1).FullName (Join-Path $motor "deno.exe")
+
+          Write-Host "MPV oynatıcı indiriliyor..."
+          $mpvSurum = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest"
+          $mpvVarlik = $mpvSurum.assets | Where-Object {
+            $_.name -match "^mpv-x86_64.*\.7z$" -and $_.name -notmatch "dev|debug|v3"
+          } | Select-Object -First 1
+          if (-not $mpvVarlik) {
+            $mpvVarlik = $mpvSurum.assets | Where-Object { $_.name -match "^mpv-x86_64.*\.7z$" } | Select-Object -First 1
+          }
+          if (-not $mpvVarlik) { throw "MPV Windows paketi bulunamadı" }
+          $mpvArsiv = Join-Path $gecici $mpvVarlik.name
+          Invoke-WebRequest -Headers $headers -Uri $mpvVarlik.browser_download_url -OutFile $mpvArsiv
+          $mpvCikarma = Join-Path $gecici "mpv"
+          New-Item -ItemType Directory -Force -Path $mpvCikarma | Out-Null
+          & 7z x $mpvArsiv "-o$mpvCikarma" -y | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw "MPV arşivi çıkarılamadı" }
+          Copy-Item (Get-ChildItem $mpvCikarma -Recurse -Filter mpv.exe | Select-Object -First 1).FullName (Join-Path $motor "mpv.exe")
+
+          $hedefArsiv = Join-Path $PWD "desktopApp/src/main/resources/windows-motor.zip"
+          if (Test-Path $hedefArsiv) { Remove-Item $hedefArsiv -Force }
+          Compress-Archive -Path (Join-Path $motor "*") -DestinationPath $hedefArsiv -CompressionLevel Optimal
+          Get-ChildItem $motor | ForEach-Object {
+            "$($_.Name) $((Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant())"
+          } | Tee-Object -FilePath windows-motor-sha256.txt
+
+      - name: Motor hazırlama sonucunu doğrula
+        if: steps.motor-hazirla.outcome == 'failure'
+        shell: pwsh
+        run: |
+          Write-Host "Windows motor bileşenleri hazırlanamadı."
+          exit 1
+
+      - name: BPC ve BPC Developer paketlerini derle
         id: windows-derleme
         continue-on-error: true
         shell: pwsh
         run: |
-          & gradle :desktopApp:test :desktopApp:packageMsi :desktopApp:packageExe --stacktrace --console=plain *>&1 | Tee-Object -FilePath windows-derleme.log
-          exit $LASTEXITCODE
+          $ErrorActionPreference = "Continue"
+          & gradle :desktopApp:test :desktopApp:packageMsi :desktopApp:packageExe --stacktrace --console=plain *>&1 | Tee-Object -FilePath windows-normal-derleme.log
+          $normalKod = $LASTEXITCODE
+          & gradle :desktopApp:packageMsi :desktopApp:packageExe -PdeveloperSurumu=true --stacktrace --console=plain *>&1 | Tee-Object -FilePath windows-developer-derleme.log
+          $developerKod = $LASTEXITCODE
+          if ($normalKod -ne 0 -or $developerKod -ne 0) { exit 1 }
 
-      - name: Windows derleme günlüğünü yükle
+      - name: Windows paketlerini adlandır
+        if: steps.windows-derleme.outcome == 'success'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "dagitim/windows" | Out-Null
+          Copy-Item (Get-ChildItem "desktopApp/build/normal/compose/binaries/main/msi" -Filter *.msi | Select-Object -First 1).FullName "dagitim/windows/BPC-0.3.0.msi"
+          Copy-Item (Get-ChildItem "desktopApp/build/normal/compose/binaries/main/exe" -Filter *.exe | Select-Object -First 1).FullName "dagitim/windows/BPC-0.3.0.exe"
+          Copy-Item (Get-ChildItem "desktopApp/build/developer/compose/binaries/main/msi" -Filter *.msi | Select-Object -First 1).FullName "dagitim/windows/BPC-Developer-0.3.0.msi"
+          Copy-Item (Get-ChildItem "desktopApp/build/developer/compose/binaries/main/exe" -Filter *.exe | Select-Object -First 1).FullName "dagitim/windows/BPC-Developer-0.3.0.exe"
+          Get-ChildItem "dagitim/windows" | ForEach-Object {
+            "$($_.Name) $((Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant())"
+          } | Tee-Object -FilePath windows-sha256.txt
+
+      - name: Windows günlüklerini yükle
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Windows-Derleme-Gunlugu
-          path: windows-derleme.log
-          if-no-files-found: error
+          name: Windows-Derleme-Gunlugu-0.3.0
+          path: |
+            windows-normal-derleme.log
+            windows-developer-derleme.log
+            windows-motor-sha256.txt
+            windows-sha256.txt
+          if-no-files-found: warn
 
-      - name: Windows MSI paketini yükle
+      - name: BPC paketlerini yükle
         if: steps.windows-derleme.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: YT-Indirici-Windows-MSI-0.2.0
-          path: desktopApp/build/compose/binaries/main/msi/*.msi
+          name: BPC-0.3.0
+          path: |
+            dagitim/windows/BPC-0.3.0.msi
+            dagitim/windows/BPC-0.3.0.exe
           if-no-files-found: error
 
-      - name: Windows EXE paketini yükle
+      - name: BPC Developer paketlerini yükle
         if: steps.windows-derleme.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: YT-Indirici-Windows-EXE-0.2.0
-          path: desktopApp/build/compose/binaries/main/exe/*.exe
+          name: BPC-Developer-0.3.0
+          path: |
+            dagitim/windows/BPC-Developer-0.3.0.msi
+            dagitim/windows/BPC-Developer-0.3.0.exe
           if-no-files-found: error
 
       - name: Windows derleme sonucunu doğrula
         if: steps.windows-derleme.outcome == 'failure'
         shell: pwsh
         run: |
-          Write-Host "Windows derlemesi başarısız oldu. Derleme günlüğü artefakt olarak yüklendi."
+          Write-Host "Windows derlemesi başarısız oldu. Türkçe günlüklar artefakt olarak yüklendi."
           exit 1
+
+  github-release-olustur:
+    name: GitHub Release oluştur
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - android-uygulamalarini-derle
+      - windows-uygulamalarini-derle
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Bmobil paketini al
+        uses: actions/download-artifact@v4
+        with:
+          name: Bmobil-0.3.0
+          path: release
+
+      - name: Bmobil Developer paketini al
+        uses: actions/download-artifact@v4
+        with:
+          name: Bmobil-Developer-0.3.0
+          path: release
+
+      - name: BPC paketlerini al
+        uses: actions/download-artifact@v4
+        with:
+          name: BPC-0.3.0
+          path: release
+
+      - name: BPC Developer paketlerini al
+        uses: actions/download-artifact@v4
+        with:
+          name: BPC-Developer-0.3.0
+          path: release
+
+      - name: SHA-256 listesi oluştur
+        shell: bash
+        run: |
+          cd release
+          sha256sum * | tee SHA256SUMS.txt
+
+      - name: Bmobil ve BPC 0.3.0 sürümünü yayımla
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.3.0
+          name: Bmobil ve BPC 0.3.0
+          target_commitish: ${{ github.sha }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## Bmobil ve BPC 0.3.0
+
+            - Android ve Windows oynatıcıları düzeltildi.
+            - İndirilen ses/dublaj ve altyazı parçaları oynatıcıdan seçilebilir.
+            - Windows motorları kurulum paketine gömüldü; ilk indirme ağ tabanlı kuruluma bağlı değildir.
+            - Bmobil ve BPC şifreli kütüphane sürümleridir.
+            - Bmobil Developer ve BPC Developer dosyaları normal depolamaya açık biçimde kaydeder.
+          files: |
+            release/Bmobil-0.3.0.apk
+            release/Bmobil-Developer-0.3.0.apk
+            release/BPC-0.3.0.msi
+            release/BPC-0.3.0.exe
+            release/BPC-Developer-0.3.0.msi
+            release/BPC-Developer-0.3.0.exe
+            release/SHA256SUMS.txt
+          fail_on_unmatched_files: true
