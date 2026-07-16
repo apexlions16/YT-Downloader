@@ -1,36 +1,60 @@
 package tr.com.apexlions.ytdownloader.android
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import tr.com.apexlions.ytdownloader.model.PlatformBilgisi
 import tr.com.apexlions.ytdownloader.ui.YTIndiriciUygulamasi
 
 class AnaEtkinlik : ComponentActivity() {
+    private val bildirimIzni = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
         YtDlpGuncellemePlanlayici.planla(this)
+        bildirimIzniniIste()
 
-        val medyaDizini = getExternalFilesDir("medya")?.absolutePath
-            ?: filesDir.resolve("medya").absolutePath
-
-        val paylasilanBaglanti = intent
-            ?.takeIf { it.action == Intent.ACTION_SEND }
-            ?.getStringExtra(Intent.EXTRA_TEXT)
-
+        val uygulama = application as YTIndiriciUygulamasi
         setContent {
             YTIndiriciUygulamasi(
+                denetleyici = uygulama.denetleyici,
                 platform = PlatformBilgisi(
                     ad = "Android",
                     diskSecimiDestekleniyor = false,
-                    depolamaAciklamasi = "Uygulamaya özel medya alanı: $medyaDizini",
+                    depolamaAciklamasi = "İçerikler uygulamanın dahili, özel ve AES-256-GCM şifreli kütüphanesinde tutulur.",
                 ),
-                ilkBaglanti = paylasilanBaglanti.orEmpty(),
+                ilkBaglanti = paylasilanBaglanti(intent),
             )
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        paylasilanBaglanti(intent)?.let {
+            (application as YTIndiriciUygulamasi).denetleyici.baglantiyiDegistir(it)
+        }
+    }
+
+    private fun paylasilanBaglanti(intent: Intent?): String? =
+        intent
+            ?.takeIf { it.action == Intent.ACTION_SEND }
+            ?.getStringExtra(Intent.EXTRA_TEXT)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+
+    private fun bildirimIzniniIste() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            bildirimIzni.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 }
