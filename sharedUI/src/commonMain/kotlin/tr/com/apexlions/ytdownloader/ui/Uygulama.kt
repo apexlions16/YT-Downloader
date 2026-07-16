@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -59,45 +58,17 @@ fun YTIndiriciUygulamasi(
     var baglanti by remember(ilkBaglanti) { mutableStateOf(ilkBaglanti) }
 
     MaterialTheme(colorScheme = uygulamaRenkleri()) {
-        Surface(Modifier.fillMaxSize(), color = KoyuZemin) {
+        Surface(modifier = Modifier.fillMaxSize(), color = KoyuZemin) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 item { UstAlan(platform.ad) }
                 item {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = KartZemini),
-                        shape = RoundedCornerShape(22.dp),
-                    ) {
-                        Column(
-                            Modifier.fillMaxWidth().padding(18.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Text("Bağlantıyı yapıştır", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                            Text(
-                                "Çözünürlük, FPS, kodek, ses biçimi ve tahmini boyut otomatik çıkarılacak.",
-                                color = IkincilMetin,
-                                fontSize = 13.sp,
-                            )
-                            OutlinedTextField(
-                                value = baglanti,
-                                onValueChange = { baglanti = it },
-                                modifier = Modifier.fillMaxWidth(),
-                                placeholder = { Text("https://...") },
-                                singleLine = true,
-                                shape = RoundedCornerShape(14.dp),
-                            )
-                            Button(
-                                onClick = {},
-                                enabled = baglanti.isNotBlank(),
-                                modifier = Modifier.fillMaxWidth().height(52.dp),
-                                shape = RoundedCornerShape(14.dp),
-                            ) {
-                                Text("İçeriği analiz et", fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
+                    BaglantiKarti(
+                        baglanti = baglanti,
+                        baglantiDegisti = { baglanti = it },
+                    )
                 }
                 item { HizDurumuKarti() }
                 item {
@@ -108,10 +79,8 @@ fun YTIndiriciUygulamasi(
                         diskSecildi = diskSecildi,
                     )
                 }
-                item {
-                    Text("Kütüphanen", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
-                }
-                item { BilgiKarti("Kanal profilleri", "İçerikler kanala göre otomatik gruplanacak.", "Hazır") }
+                item { Text("Kütüphanen", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold) }
+                item { BilgiKarti("Kanal profilleri", "İçerikler kanala göre otomatik gruplanacak.", "Temel hazır") }
                 item { BilgiKarti("Uygulama içi oynatma", "İzleme ilerlemesi cihazda tutulacak.", "Sırada") }
                 item { BilgiKarti("Şifreli kütüphane", "Medya yalnızca uygulama içinde çözülecek.", "Sırada") }
                 item { Spacer(Modifier.height(24.dp)) }
@@ -123,7 +92,7 @@ fun YTIndiriciUygulamasi(
 @Composable
 private fun UstAlan(platformAdi: String) {
     Row(
-        Modifier.fillMaxWidth().padding(top = 24.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -136,22 +105,63 @@ private fun UstAlan(platformAdi: String) {
 }
 
 @Composable
+private fun BaglantiKarti(
+    baglanti: String,
+    baglantiDegisti: (String) -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = KartZemini),
+        shape = RoundedCornerShape(22.dp),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Bağlantıyı yapıştır", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text(
+                "Çözünürlük, FPS, kodek, ses biçimi ve tahmini boyut otomatik çıkarılacak.",
+                color = IkincilMetin,
+                fontSize = 13.sp,
+            )
+            OutlinedTextField(
+                value = baglanti,
+                onValueChange = baglantiDegisti,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("https://...") },
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
+            )
+            Button(
+                onClick = {},
+                enabled = baglanti.isNotBlank(),
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                Text("İçeriği analiz et", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
 private fun HizDurumuKarti() {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF10251A)),
         shape = RoundedCornerShape(18.dp),
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
-            Box(Modifier.size(12.dp).background(Basari, RoundedCornerShape(100.dp)))
-            Column(Modifier.weight(1f)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Box(Modifier.size(12.dp).background(Basari, RoundedCornerShape(100.dp)))
                 Text("Turbo motor hazır", fontWeight = FontWeight.Bold)
-                Text("Bağlantıya göre 4–16 eşzamanlı parça seçilecek.", color = Color(0xFFB7D7C2), fontSize = 13.sp)
             }
-            Text("12×", color = Basari, fontWeight = FontWeight.ExtraBold)
+            Text("Bağlantıya göre 4–16 eşzamanlı parça seçilecek.", color = Color(0xFFB7D7C2), fontSize = 13.sp)
+            Text("Varsayılan hız profili: 12×", color = Basari, fontWeight = FontWeight.ExtraBold)
         }
     }
 }
@@ -168,45 +178,22 @@ private fun DepolamaKarti(
         shape = RoundedCornerShape(22.dp),
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(18.dp),
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("Depolama", fontWeight = FontWeight.Bold, fontSize = 18.sp)
             Text(platform.depolamaAciklamasi, color = IkincilMetin, fontSize = 13.sp)
 
             if (platform.diskSecimiDestekleniyor) {
+                if (diskler.isEmpty()) {
+                    Text("Yazılabilir disk bulunamadı.", color = Kirmizi, fontWeight = FontWeight.Bold)
+                }
                 diskler.forEach { disk ->
-                    val secili = seciliDiskYolu == disk.kokYolu
-                    Card(
-                        modifier = Modifier.fillMaxWidth().clickable { diskSecildi(disk.kokYolu) },
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (secili) Color(0xFF3A1B1B) else Color(0xFF20242D),
-                        ),
-                        shape = RoundedCornerShape(15.dp),
-                    ) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(disk.gorunenAd, fontWeight = FontWeight.Bold)
-                                Text(
-                                    "${disk.kullanilabilirBayt.okunabilirBoyut()} boş / ${disk.toplamBayt.okunabilirBoyut()}",
-                                    color = IkincilMetin,
-                                    fontSize = 12.sp,
-                                )
-                            }
-                            Text(
-                                when {
-                                    secili -> "Seçildi"
-                                    disk.onerilen -> "Önerilen"
-                                    else -> "Seç"
-                                },
-                                color = if (secili || disk.onerilen) Kirmizi else IkincilMetin,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                    }
+                    DiskKarti(
+                        disk = disk,
+                        secili = seciliDiskYolu == disk.kokYolu,
+                        secildi = { diskSecildi(disk.kokYolu) },
+                    )
                 }
             } else {
                 Text(
@@ -221,26 +208,59 @@ private fun DepolamaKarti(
 }
 
 @Composable
+private fun DiskKarti(
+    disk: DepolamaHedefi,
+    secili: Boolean,
+    secildi: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = secildi),
+        colors = CardDefaults.cardColors(
+            containerColor = if (secili) Color(0xFF3A1B1B) else Color(0xFF20242D),
+        ),
+        shape = RoundedCornerShape(15.dp),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Text(disk.gorunenAd, fontWeight = FontWeight.Bold)
+            Text(
+                "${disk.kullanilabilirBayt.okunabilirBoyut()} boş / ${disk.toplamBayt.okunabilirBoyut()}",
+                color = IkincilMetin,
+                fontSize = 12.sp,
+            )
+            Text(
+                when {
+                    secili -> "Seçildi"
+                    disk.onerilen -> "Önerilen disk"
+                    else -> "Seçmek için dokun"
+                },
+                color = if (secili || disk.onerilen) Kirmizi else IkincilMetin,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+    }
+}
+
+@Composable
 private fun BilgiKarti(baslik: String, aciklama: String, durum: String) {
     Card(
         colors = CardDefaults.cardColors(containerColor = KartZemini),
         shape = RoundedCornerShape(18.dp),
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Box(
-                Modifier.size(46.dp).background(Kirmizi, RoundedCornerShape(15.dp)),
+                modifier = Modifier.size(42.dp).background(Kirmizi, RoundedCornerShape(13.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(baslik.take(1), fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+                Text(baslik.take(1), fontWeight = FontWeight.ExtraBold, fontSize = 19.sp)
             }
-            Column(Modifier.weight(1f)) {
-                Text(baslik, fontWeight = FontWeight.Bold)
-                Text(aciklama, color = IkincilMetin, fontSize = 12.sp)
-            }
+            Text(baslik, fontWeight = FontWeight.Bold)
+            Text(aciklama, color = IkincilMetin, fontSize = 12.sp)
             Text(durum, color = Kirmizi, fontWeight = FontWeight.Bold)
         }
     }
@@ -250,21 +270,27 @@ private fun BilgiKarti(baslik: String, aciklama: String, durum: String) {
 private fun HizliOynatIkonu() {
     Canvas(Modifier.size(52.dp)) {
         drawRoundRect(Kirmizi, cornerRadius = CornerRadius(size.width * .25f, size.height * .25f))
-        drawPath(Path().apply {
-            moveTo(size.width * .34f, size.height * .25f)
-            lineTo(size.width * .72f, size.height * .50f)
-            lineTo(size.width * .34f, size.height * .75f)
-            close()
-        }, Color.White)
-        drawPath(Path().apply {
-            moveTo(size.width * .60f, size.height * .15f)
-            lineTo(size.width * .49f, size.height * .43f)
-            lineTo(size.width * .61f, size.height * .43f)
-            lineTo(size.width * .50f, size.height * .72f)
-            lineTo(size.width * .74f, size.height * .38f)
-            lineTo(size.width * .62f, size.height * .38f)
-            close()
-        }, Color(0xFFFFD54F))
+        drawPath(
+            path = Path().apply {
+                moveTo(size.width * .34f, size.height * .25f)
+                lineTo(size.width * .72f, size.height * .50f)
+                lineTo(size.width * .34f, size.height * .75f)
+                close()
+            },
+            color = Color.White,
+        )
+        drawPath(
+            path = Path().apply {
+                moveTo(size.width * .60f, size.height * .15f)
+                lineTo(size.width * .49f, size.height * .43f)
+                lineTo(size.width * .61f, size.height * .43f)
+                lineTo(size.width * .50f, size.height * .72f)
+                lineTo(size.width * .74f, size.height * .38f)
+                lineTo(size.width * .62f, size.height * .38f)
+                close()
+            },
+            color = Color(0xFFFFD54F),
+        )
     }
 }
 
