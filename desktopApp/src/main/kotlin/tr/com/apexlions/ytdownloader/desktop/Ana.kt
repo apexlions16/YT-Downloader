@@ -12,20 +12,27 @@ fun main() {
 
     application {
         val denetleyici = remember { WindowsUygulamaDenetleyicisi() }
+        val developer = SurumBilgisi.developerSurumu
+        val uygulamaAdi = SurumBilgisi.uygulamaAdi
 
         Window(
             onCloseRequest = ::exitApplication,
-            title = "YT İndirici",
+            title = uygulamaAdi,
             icon = painterResource("uygulama.png"),
         ) {
-            window.minimumSize = java.awt.Dimension(860, 760)
+            window.minimumSize = java.awt.Dimension(900, 780)
 
             YTIndiriciUygulamasi(
                 denetleyici = denetleyici,
                 platform = PlatformBilgisi(
-                    ad = "Windows",
+                    ad = uygulamaAdi,
                     diskSecimiDestekleniyor = true,
-                    depolamaAciklamasi = "Yalnızca hedef diski seç. Uygulama şifreli kütüphaneyi seçilen diskte otomatik oluşturur.",
+                    depolamaAciklamasi = if (developer) {
+                        "Hedef diski seç. İçerikler BPC Developer İndirmeleri klasörüne normal medya dosyası olarak yazılır."
+                    } else {
+                        "Hedef diski seç. AES-256-GCM şifreli BPC kütüphanesi seçilen diskte oluşturulur."
+                    },
+                    developerSurumu = developer,
                 ),
             )
         }
