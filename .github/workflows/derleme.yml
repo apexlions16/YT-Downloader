@@ -1,4 +1,4 @@
-name: Android ve Windows Derlemesi
+name: Android ve Windows Tam Sürüm Derlemesi
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   android-uygulamasini-derle:
-    name: Android APK oluştur
+    name: Android APK paketlerini oluştur
     runs-on: ubuntu-latest
     steps:
       - name: Kaynak kodu al
@@ -33,13 +33,13 @@ jobs:
         with:
           gradle-version: "8.14.2"
 
-      - name: Android hata ayıklama APK'sını derle
+      - name: Android testlerini çalıştır ve APK paketlerini derle
         id: android-derleme
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
-          gradle :androidApp:assembleDebug --stacktrace --console=plain 2>&1 | tee android-derleme.log
+          gradle :sharedUI:allTests :androidApp:assembleRelease --stacktrace --console=plain 2>&1 | tee android-derleme.log
 
       - name: Android derleme günlüğünü yükle
         if: always()
@@ -49,12 +49,12 @@ jobs:
           path: android-derleme.log
           if-no-files-found: error
 
-      - name: Android APK'sını yükle
+      - name: Android APK paketlerini yükle
         if: steps.android-derleme.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: YT-Indirici-Android-Debug
-          path: androidApp/build/outputs/apk/debug/*.apk
+          name: YT-Indirici-Android-0.2.0
+          path: androidApp/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
       - name: Android derleme sonucunu doğrula
@@ -65,7 +65,7 @@ jobs:
           exit 1
 
   windows-uygulamasini-derle:
-    name: Windows MSI oluştur
+    name: Windows MSI ve EXE oluştur
     runs-on: windows-latest
     steps:
       - name: Kaynak kodu al
@@ -82,12 +82,12 @@ jobs:
         with:
           gradle-version: "8.14.2"
 
-      - name: Windows testlerini çalıştır ve MSI oluştur
+      - name: Windows testlerini çalıştır, MSI ve EXE oluştur
         id: windows-derleme
         continue-on-error: true
         shell: pwsh
         run: |
-          & gradle :desktopApp:test :desktopApp:packageMsi --stacktrace --console=plain *>&1 | Tee-Object -FilePath windows-derleme.log
+          & gradle :desktopApp:test :desktopApp:packageMsi :desktopApp:packageExe --stacktrace --console=plain *>&1 | Tee-Object -FilePath windows-derleme.log
           exit $LASTEXITCODE
 
       - name: Windows derleme günlüğünü yükle
@@ -98,12 +98,20 @@ jobs:
           path: windows-derleme.log
           if-no-files-found: error
 
-      - name: Windows paketini yükle
+      - name: Windows MSI paketini yükle
         if: steps.windows-derleme.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: YT-Indirici-Windows-MSI
+          name: YT-Indirici-Windows-MSI-0.2.0
           path: desktopApp/build/compose/binaries/main/msi/*.msi
+          if-no-files-found: error
+
+      - name: Windows EXE paketini yükle
+        if: steps.windows-derleme.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: YT-Indirici-Windows-EXE-0.2.0
+          path: desktopApp/build/compose/binaries/main/exe/*.exe
           if-no-files-found: error
 
       - name: Windows derleme sonucunu doğrula
