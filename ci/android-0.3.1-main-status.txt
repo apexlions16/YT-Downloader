@@ -1,37 +1,36 @@
-run_id=29542515264
-run_url=https://github.com/apexlions16/YT-Downloader/actions/runs/29542515264
+run_id=29542663136
+run_url=https://github.com/apexlions16/YT-Downloader/actions/runs/29542663136
 android_result=success
-release_result=failure
-commit=63c1a8d30f0b42c489cb97c1efd6855be9e0b197
+release_result=success
+commit=04bd5990bd161ecb1df0c68c6107b8392f26ad88
 
 ===== release.log =====
 Yeni v0.3.1 Release oluşturuluyor.
-failed to run git: fatal: not a git repository (or any of the parent directories): .git
-
+https://github.com/apexlions16/YT-Downloader/releases/tag/v0.3.1
+{"isDraft":false,"isPrerelease":false,"name":"Bmobil 0.3.1 Android Oynatma Hotfix","tagName":"v0.3.1","url":"https://github.com/apexlions16/YT-Downloader/releases/tag/v0.3.1"}
 
 ===== android-derleme.log son 120 satır =====
-> Task :androidApp:compileNormalReleaseKotlin FROM-CACHE
 > Task :sharedUI:generateReleaseLintModel
 > Task :sharedUI:prepareLintJarForPublish
 > Task :sharedUI:stripReleaseDebugSymbols NO-SOURCE
-> Task :sharedUI:extractDeepLinksForAarRelease FROM-CACHE
 > Task :sharedUI:copyReleaseJniLibsProjectAndLocalJars
+> Task :sharedUI:extractDeepLinksForAarRelease FROM-CACHE
 > Task :sharedUI:extractReleaseAnnotations FROM-CACHE
 > Task :androidApp:compileNormalReleaseJavaWithJavac FROM-CACHE
 > Task :sharedUI:mergeReleaseGeneratedProguardFiles
 > Task :sharedUI:mergeReleaseConsumerProguardFiles
-> Task :sharedUI:lintVitalAnalyzeRelease FROM-CACHE
-> Task :androidApp:bundleNormalReleaseClassesToRuntimeJar
 > Task :androidApp:bundleNormalReleaseClassesToCompileJar
+> Task :androidApp:bundleNormalReleaseClassesToRuntimeJar
+> Task :sharedUI:lintVitalAnalyzeRelease FROM-CACHE
 > Task :sharedUI:writeReleaseLintModelMetadata
-> Task :androidApp:processNormalReleaseJavaRes
 > Task :sharedUI:generateReleaseLintVitalModel
-> Task :sharedUI:mergeReleaseJavaResource
-> Task :sharedUI:syncReleaseLibJars FROM-CACHE
 > Task :androidApp:compileNormalReleaseUnitTestKotlin FROM-CACHE
 > Task :androidApp:compileNormalReleaseUnitTestJavaWithJavac NO-SOURCE
-> Task :sharedUI:bundleReleaseLocalLintAar
+> Task :sharedUI:mergeReleaseJavaResource
+> Task :androidApp:processNormalReleaseJavaRes
 > Task :androidApp:processNormalReleaseUnitTestJavaRes
+> Task :sharedUI:syncReleaseLibJars FROM-CACHE
+> Task :sharedUI:bundleReleaseLocalLintAar
 > Task :androidApp:testNormalReleaseUnitTest FROM-CACHE
 > Task :androidApp:processDeveloperReleaseMainManifest FROM-CACHE
 > Task :androidApp:processDeveloperReleaseManifest FROM-CACHE
@@ -40,9 +39,9 @@ failed to run git: fatal: not a git repository (or any of the parent directories
 > Task :androidApp:processDeveloperReleaseResources FROM-CACHE
 > Task :androidApp:compileDeveloperReleaseKotlin FROM-CACHE
 > Task :androidApp:compileDeveloperReleaseJavaWithJavac FROM-CACHE
+> Task :androidApp:bundleDeveloperReleaseClassesToRuntimeJar
 > Task :androidApp:processDeveloperReleaseJavaRes
 > Task :androidApp:bundleDeveloperReleaseClassesToCompileJar
-> Task :androidApp:bundleDeveloperReleaseClassesToRuntimeJar
 > Task :androidApp:dexBuilderNormalRelease FROM-CACHE
 > Task :androidApp:compileDeveloperReleaseUnitTestKotlin FROM-CACHE
 > Task :androidApp:compileDeveloperReleaseUnitTestJavaWithJavac NO-SOURCE
@@ -82,13 +81,13 @@ Unable to strip the following libraries, packaging them as they are: libandroidx
 > Task :androidApp:generateDeveloperReleaseAssets UP-TO-DATE
 > Task :androidApp:mergeDeveloperReleaseAssets
 > Task :androidApp:compressDeveloperReleaseAssets FROM-CACHE
-> Task :androidApp:extractDeveloperReleaseVersionControlInfo
 > Task :androidApp:checkDeveloperReleaseDuplicateClasses
-> Task :androidApp:generateDeveloperReleaseLintVitalReportModel
+> Task :androidApp:extractDeveloperReleaseVersionControlInfo
 > Task :androidApp:mergeExtDexDeveloperRelease FROM-CACHE
 > Task :androidApp:mergeDeveloperReleaseNativeLibs
 > Task :androidApp:mergeDexDeveloperRelease FROM-CACHE
 > Task :androidApp:compileDeveloperReleaseArtProfile FROM-CACHE
+> Task :androidApp:generateDeveloperReleaseLintVitalReportModel
 > Task :androidApp:lintVitalAnalyzeDeveloperRelease FROM-CACHE
 
 > Task :androidApp:stripDeveloperReleaseDebugSymbols
@@ -97,28 +96,29 @@ Unable to strip the following libraries, packaging them as they are: libandroidx
 > Task :androidApp:extractDeveloperReleaseNativeSymbolTables FROM-CACHE
 > Task :androidApp:mergeDeveloperReleaseNativeDebugMetadata NO-SOURCE
 > Task :androidApp:optimizeDeveloperReleaseResources FROM-CACHE
-> Task :androidApp:mergeDeveloperReleaseJavaResource
 > Task :androidApp:collectDeveloperReleaseDependencies
 > Task :androidApp:sdkDeveloperReleaseDependencyData
 > Task :androidApp:validateSigningDeveloperRelease
 > Task :androidApp:writeDeveloperReleaseAppMetadata
 > Task :androidApp:writeDeveloperReleaseSigningConfigVersions
-> Task :androidApp:lintVitalReportDeveloperRelease
 > Task :androidApp:lintVitalReportNormalRelease
+> Task :androidApp:lintVitalReportDeveloperRelease
 > Task :androidApp:lintVitalNormalRelease
 > Task :androidApp:lintVitalDeveloperRelease
+> Task :androidApp:mergeDeveloperReleaseJavaResource
 
 > Task :androidApp:packageNormalRelease
 PackagingOptions.jniLibs.useLegacyPackaging should be set to true because android:extractNativeLibs is set to "true" in AndroidManifest.xml.
+
+> Task :androidApp:createNormalReleaseApkListingFileRedirect
+> Task :androidApp:assembleNormalRelease
 
 > Task :androidApp:packageDeveloperRelease
 PackagingOptions.jniLibs.useLegacyPackaging should be set to true because android:extractNativeLibs is set to "true" in AndroidManifest.xml.
 
 > Task :androidApp:createDeveloperReleaseApkListingFileRedirect
 > Task :androidApp:assembleDeveloperRelease
-> Task :androidApp:createNormalReleaseApkListingFileRedirect
-> Task :androidApp:assembleNormalRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/android-derleme-1784244975186.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/android-derleme-1784245231164.json
 
 [Incubating] Problems report is available at: file:///home/runner/work/YT-Downloader/YT-Downloader/build/reports/problems/problems-report.html
 
@@ -132,5 +132,5 @@ BUILD SUCCESSFUL in 34s
 175 actionable tasks: 89 executed, 86 from cache
 
 ===== SHA-256 =====
-4ef41fa92bb27f4977e7761a88acbd5e70738c8d2e166083c13025391f56a337  dagitim/android/Bmobil-0.3.1.apk
-1fa510fbd4eac5ba0c5564b261b748270ec8bb936629e927699e31663f04ff1c  dagitim/android/Bmobil-Developer-0.3.1.apk
+2df2bc571db56f167bb9af350516026059e61336b86323a41f357d8e5a4c746c  dagitim/android/Bmobil-0.3.1.apk
+dfc3a35bde87eaa67da9f049ef42bb1ad6880920523309fdffb7518e199d392a  dagitim/android/Bmobil-Developer-0.3.1.apk
