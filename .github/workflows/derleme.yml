@@ -1,0 +1,75 @@
+name: Android ve Windows Derlemesi
+
+on:
+  push:
+    branches:
+      - main
+      - "agent/**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-uygulamasini-derle:
+    name: Android APK oluştur
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: JDK 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android araçlarını kur
+        uses: android-actions/setup-android@v3
+
+      - name: Gradle 8.14.2 kur
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.2"
+
+      - name: Android hata ayıklama APK'sını derle
+        run: gradle :androidApp:assembleDebug --stacktrace
+
+      - name: Android APK'sını yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: YT-Indirici-Android-Debug
+          path: androidApp/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+  windows-uygulamasini-derle:
+    name: Windows MSI oluştur
+    runs-on: windows-latest
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: JDK 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Gradle 8.14.2 kur
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.2"
+
+      - name: Windows testlerini çalıştır
+        run: gradle :desktopApp:test --stacktrace
+
+      - name: Windows MSI paketini oluştur
+        run: gradle :desktopApp:packageMsi --stacktrace
+
+      - name: Windows paketini yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: YT-Indirici-Windows-MSI
+          path: desktopApp/build/compose/binaries/main/msi/*.msi
+          if-no-files-found: error
