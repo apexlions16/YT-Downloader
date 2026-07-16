@@ -31,7 +31,7 @@ class AnaEtkinlik : ComponentActivity() {
                     diskSecimiDestekleniyor = false,
                     depolamaAciklamasi = "İçerikler uygulamanın dahili, özel ve AES-256-GCM şifreli kütüphanesinde tutulur.",
                 ),
-                ilkBaglanti = paylasilanBaglanti(intent),
+                ilkBaglanti = paylasilanBaglanti(intent).orEmpty(),
             )
         }
     }
