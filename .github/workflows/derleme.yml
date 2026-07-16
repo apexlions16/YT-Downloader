@@ -109,88 +109,19 @@ jobs:
 
       - name: Windows motor bileşenlerini indir ve doğrula
         id: motor-hazirla
-        continue-on-error: true
         shell: pwsh
         run: |
-          $ErrorActionPreference = "Stop"
-          $ProgressPreference = "SilentlyContinue"
-          $headers = @{
-            Authorization = "Bearer $env:GITHUB_TOKEN"
-            Accept = "application/vnd.github+json"
-            "User-Agent" = "BPC-GitHub-Actions"
-          }
-          $motor = Join-Path $PWD "windows-motor-hazir"
-          $gecici = Join-Path $PWD "windows-motor-gecici"
-          New-Item -ItemType Directory -Force -Path $motor, $gecici | Out-Null
+          ./scripts/windows-motor-hazirla.ps1 -GunlukYolu windows-motor.log
 
-          Write-Host "yt-dlp Nightly indiriliyor..."
-          $ytDlp = Join-Path $motor "yt-dlp.exe"
-          Invoke-WebRequest -Headers $headers -Uri "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.exe" -OutFile $ytDlp
-          $toplamlar = Invoke-WebRequest -Headers $headers -Uri "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/SHA2-256SUMS"
-          $beklenen = (($toplamlar.Content -split "`n") | Where-Object { $_ -match "yt-dlp\.exe\s*$" } | Select-Object -First 1) -split "\s+" | Select-Object -First 1
-          $gercek = (Get-FileHash -Algorithm SHA256 $ytDlp).Hash.ToLowerInvariant()
-          if ([string]::IsNullOrWhiteSpace($beklenen) -or $gercek -ne $beklenen.Trim().ToLowerInvariant()) {
-            throw "yt-dlp SHA-256 doğrulaması başarısız"
-          }
-
-          Write-Host "FFmpeg ve FFprobe indiriliyor..."
-          $ffSurum = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/yt-dlp/FFmpeg-Builds/releases/latest"
-          $ffVarlik = $ffSurum.assets | Where-Object {
-            $_.name -match "win64.*gpl.*\.zip$" -and $_.name -notmatch "shared"
-          } | Select-Object -First 1
-          if (-not $ffVarlik) { throw "Uygun FFmpeg Windows paketi bulunamadı" }
-          $ffArsiv = Join-Path $gecici $ffVarlik.name
-          Invoke-WebRequest -Headers $headers -Uri $ffVarlik.browser_download_url -OutFile $ffArsiv
-          if ($ffVarlik.digest -and $ffVarlik.digest.StartsWith("sha256:")) {
-            $beklenenFf = $ffVarlik.digest.Substring(7).ToLowerInvariant()
-            $gercekFf = (Get-FileHash -Algorithm SHA256 $ffArsiv).Hash.ToLowerInvariant()
-            if ($gercekFf -ne $beklenenFf) { throw "FFmpeg SHA-256 doğrulaması başarısız" }
-          }
-          $ffCikarma = Join-Path $gecici "ffmpeg"
-          Expand-Archive -Path $ffArsiv -DestinationPath $ffCikarma -Force
-          Copy-Item (Get-ChildItem $ffCikarma -Recurse -Filter ffmpeg.exe | Select-Object -First 1).FullName (Join-Path $motor "ffmpeg.exe")
-          Copy-Item (Get-ChildItem $ffCikarma -Recurse -Filter ffprobe.exe | Select-Object -First 1).FullName (Join-Path $motor "ffprobe.exe")
-
-          Write-Host "Deno indiriliyor..."
-          $denoSurum = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/denoland/deno/releases/latest"
-          $denoVarlik = $denoSurum.assets | Where-Object { $_.name -eq "deno-x86_64-pc-windows-msvc.zip" } | Select-Object -First 1
-          if (-not $denoVarlik) { throw "Deno Windows paketi bulunamadı" }
-          $denoArsiv = Join-Path $gecici $denoVarlik.name
-          Invoke-WebRequest -Headers $headers -Uri $denoVarlik.browser_download_url -OutFile $denoArsiv
-          $denoCikarma = Join-Path $gecici "deno"
-          Expand-Archive -Path $denoArsiv -DestinationPath $denoCikarma -Force
-          Copy-Item (Get-ChildItem $denoCikarma -Recurse -Filter deno.exe | Select-Object -First 1).FullName (Join-Path $motor "deno.exe")
-
-          Write-Host "MPV oynatıcı indiriliyor..."
-          $mpvSurum = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest"
-          $mpvVarlik = $mpvSurum.assets | Where-Object {
-            $_.name -match "^mpv-x86_64.*\.7z$" -and $_.name -notmatch "dev|debug|v3"
-          } | Select-Object -First 1
-          if (-not $mpvVarlik) {
-            $mpvVarlik = $mpvSurum.assets | Where-Object { $_.name -match "^mpv-x86_64.*\.7z$" } | Select-Object -First 1
-          }
-          if (-not $mpvVarlik) { throw "MPV Windows paketi bulunamadı" }
-          $mpvArsiv = Join-Path $gecici $mpvVarlik.name
-          Invoke-WebRequest -Headers $headers -Uri $mpvVarlik.browser_download_url -OutFile $mpvArsiv
-          $mpvCikarma = Join-Path $gecici "mpv"
-          New-Item -ItemType Directory -Force -Path $mpvCikarma | Out-Null
-          & 7z x $mpvArsiv "-o$mpvCikarma" -y | Out-Host
-          if ($LASTEXITCODE -ne 0) { throw "MPV arşivi çıkarılamadı" }
-          Copy-Item (Get-ChildItem $mpvCikarma -Recurse -Filter mpv.exe | Select-Object -First 1).FullName (Join-Path $motor "mpv.exe")
-
-          $hedefArsiv = Join-Path $PWD "desktopApp/src/main/resources/windows-motor.zip"
-          if (Test-Path $hedefArsiv) { Remove-Item $hedefArsiv -Force }
-          Compress-Archive -Path (Join-Path $motor "*") -DestinationPath $hedefArsiv -CompressionLevel Optimal
-          Get-ChildItem $motor | ForEach-Object {
-            "$($_.Name) $((Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant())"
-          } | Tee-Object -FilePath windows-motor-sha256.txt
-
-      - name: Motor hazırlama sonucunu doğrula
-        if: steps.motor-hazirla.outcome == 'failure'
-        shell: pwsh
-        run: |
-          Write-Host "Windows motor bileşenleri hazırlanamadı."
-          exit 1
+      - name: Windows motor günlüğünü yükle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-Motor-Gunlugu-0.3.0
+          path: |
+            windows-motor.log
+            windows-motor-sha256.txt
+          if-no-files-found: warn
 
       - name: BPC ve BPC Developer paketlerini derle
         id: windows-derleme
@@ -215,9 +146,9 @@ jobs:
           Copy-Item (Get-ChildItem "desktopApp/build/developer/compose/binaries/main/exe" -Filter *.exe | Select-Object -First 1).FullName "dagitim/windows/BPC-Developer-0.3.0.exe"
           Get-ChildItem "dagitim/windows" | ForEach-Object {
             "$($_.Name) $((Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant())"
-          } | Tee-Object -FilePath windows-sha256.txt
+          } | Set-Content -Encoding UTF8 windows-sha256.txt
 
-      - name: Windows günlüklerini yükle
+      - name: Windows derleme günlüklerini yükle
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -225,7 +156,6 @@ jobs:
           path: |
             windows-normal-derleme.log
             windows-developer-derleme.log
-            windows-motor-sha256.txt
             windows-sha256.txt
           if-no-files-found: warn
 
