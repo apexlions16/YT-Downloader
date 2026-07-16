@@ -45,21 +45,25 @@ object AndroidMetadataDonusturucu {
             .filter { it.int("height") > 0 && it.metin("vcodec") !in setOf("", "none") }
             .groupBy { it.int("height") to it.int("fps") }
             .mapNotNull { (_, adaylar) ->
-                val secilen = adaylar.maxByOrNull {
-                    max(max(it.long("filesize"), it.long("filesize_approx")), it.long("tbr"))
-                } ?: return@mapNotNull null
+                val secilen = adaylar.maxWithOrNull(
+                    compareBy<JsonNode> { videoUyumlulukPuani(it) }
+                        .thenBy { max(max(it.long("filesize"), it.long("filesize_approx")), it.long("tbr")) },
+                ) ?: return@mapNotNull null
                 val formatKimligi = secilen.metin("format_id")
                 if (formatKimligi.isBlank()) return@mapNotNull null
                 val yukseklik = secilen.int("height")
                 val fps = secilen.int("fps").takeIf { it > 0 }
                 val vcodec = secilen.metin("vcodec")
-                val hedef = if (
-                    secilen.metin("ext") == "mp4" &&
-                    (vcodec.startsWith("avc") || vcodec.startsWith("h264") || vcodec.startsWith("av01"))
-                ) "mp4" else "mkv"
+                val androidUyumluMp4 = secilen.metin("ext") == "mp4" && vcodec.androidH264Mu()
+                val hedef = if (androidUyumluMp4) "mp4" else "mkv"
                 val boyut = max(secilen.long("filesize"), secilen.long("filesize_approx"))
                     .takeIf { it > 0 }
                     ?.plus(sesBoyutu)
+                val secici = if (hedef == "mp4") {
+                    "$formatKimligi+bestaudio[ext=m4a]/$formatKimligi+bestaudio/best"
+                } else {
+                    "$formatKimligi+bestaudio/best"
+                }
 
                 IndirmeSecenegi(
                     kimlik = "video-$formatKimligi-$hedef",
@@ -67,15 +71,16 @@ object AndroidMetadataDonusturucu {
                         append("${yukseklik}p")
                         fps?.let { append(" • ${it} FPS") }
                         append(" • ${hedef.uppercase()}")
+                        if (androidUyumluMp4) append(" • Android uyumlu")
                     },
                     tur = IcerikTuru.VIDEO,
                     hedefUzanti = hedef,
-                    ytDlpSecici = "$formatKimligi+bestaudio/best",
+                    ytDlpSecici = secici,
                     videoFormatKimligi = formatKimligi,
                     yukseklik = yukseklik,
                     kareHizi = fps,
                     videoKodegi = vcodec,
-                    sesKodegi = "en iyi ses",
+                    sesKodegi = if (hedef == "mp4") "AAC/M4A öncelikli" else "en iyi ses",
                     tahminiBoyutBayt = boyut,
                 )
             }
@@ -84,22 +89,22 @@ object AndroidMetadataDonusturucu {
 
         val hizli = IndirmeSecenegi(
             kimlik = "video-en-hizli",
-            gorunenAd = "En hızlı • Tek dosya • MP4",
+            gorunenAd = "En hızlı • H.264/AAC • MP4",
             tur = IcerikTuru.VIDEO,
             hedefUzanti = "mp4",
-            ytDlpSecici = "best[ext=mp4]/best",
-            videoKodegi = "hazır birleşik akış",
-            sesKodegi = "hazır birleşik akış",
+            ytDlpSecici = "best[ext=mp4][vcodec^=avc1][acodec^=mp4a]/best[ext=mp4][vcodec^=h264][acodec^=mp4a]/best[ext=mp4]/best",
+            videoKodegi = "H.264 öncelikli",
+            sesKodegi = "AAC öncelikli",
         )
         val azami = IndirmeSecenegi(
             kimlik = "video-azami",
-            gorunenAd = "En yüksek kalite • Otomatik",
+            gorunenAd = "En yüksek kalite • Android uyumlu öncelik",
             tur = IcerikTuru.VIDEO,
             hedefUzanti = "mkv",
-            ytDlpSecici = "bestvideo+bestaudio/best",
+            ytDlpSecici = "bestvideo[vcodec^=avc1]+bestaudio[ext=m4a]/bestvideo[vcodec^=h264]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
             videoFormatKimligi = "bestvideo",
-            videoKodegi = "en iyi",
-            sesKodegi = "en iyi",
+            videoKodegi = "H.264 öncelikli, otomatik geri dönüş",
+            sesKodegi = "AAC öncelikli, otomatik geri dönüş",
         )
         val sesSecenekleri = listOf(
             sesSecenegi("m4a", "M4A • Hızlı ve uyumlu", 192, sureSaniye, false),
@@ -110,6 +115,28 @@ object AndroidMetadataDonusturucu {
             sesSecenegi("wav", "WAV • Sıkıştırılmamış", 1411, sureSaniye, true),
         )
         return listOf(hizli, azami) + videoSecenekleri + sesSecenekleri
+    }
+
+    private fun videoUyumlulukPuani(format: JsonNode): Int {
+        val kodek = format.metin("vcodec").lowercase(Locale.ROOT)
+        val uzanti = format.metin("ext").lowercase(Locale.ROOT)
+        val kodekPuani = when {
+            kodek.androidH264Mu() -> 40
+            kodek.startsWith("vp9") || kodek.startsWith("vp09") -> 30
+            kodek.startsWith("av01") -> 20
+            else -> 10
+        }
+        val kapsayiciPuani = when (uzanti) {
+            "mp4" -> 4
+            "webm" -> 2
+            else -> 1
+        }
+        return kodekPuani + kapsayiciPuani
+    }
+
+    private fun String.androidH264Mu(): Boolean {
+        val deger = lowercase(Locale.ROOT)
+        return deger.startsWith("avc1") || deger.startsWith("avc") || deger.startsWith("h264")
     }
 
     private fun sesParcalariOlustur(formatlar: JsonNode): List<SesParcasiSecenegi> {

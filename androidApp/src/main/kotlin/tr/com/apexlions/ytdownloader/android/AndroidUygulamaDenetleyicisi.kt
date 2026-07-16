@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.Uri
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.CoroutineScope
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import tr.com.apexlions.ytdownloader.model.AnalizSonucu
 import tr.com.apexlions.ytdownloader.model.IndirmeDurumu
 import tr.com.apexlions.ytdownloader.model.IndirmeGorevi
@@ -327,21 +329,36 @@ class AndroidUygulamaDenetleyicisi(
         val kayit = _durum.value.kutuphane.firstOrNull { it.medyaKimligi == medyaKimligi }
             ?: return hataGoster("Kütüphane kaydı bulunamadı.")
 
+        bilgiGoster("“${kayit.baslik}” oynatmaya hazırlanıyor…")
         kapsam.launch {
-            runCatching {
+            var olusturulanGeciciDizin: File? = null
+            try {
+                eskiOynatmaDosyalariniTemizle()
+
                 val konum: String
                 val gecici: Boolean
                 if (kayit.sifreli) {
                     val sifreliDosya = File(kayit.etkinMedyaKonumu)
-                    require(sifreliDosya.isFile) { "Şifreli medya dosyası bulunamadı" }
-                    val oynatmaDizini = File(uygulama.cacheDir, "oynatma/${UUID.randomUUID()}").apply { mkdirs() }
-                    val acikDosya = File(oynatmaDizini, "${kayit.medyaKimligi}.${kayit.asilUzanti}")
+                    require(sifreliDosya.isFile && sifreliDosya.length() > 0L) {
+                        "Şifreli medya dosyası bulunamadı veya boş"
+                    }
+                    val oynatmaKoku = File(uygulama.filesDir, OYNATMA_GECICI_KLASORU).apply { mkdirs() }
+                    val oynatmaDizini = File(oynatmaKoku, UUID.randomUUID().toString()).apply { mkdirs() }
+                    olusturulanGeciciDizin = oynatmaDizini
+                    val uzanti = guvenliUzanti(kayit.asilUzanti)
+                    val acikDosya = File(oynatmaDizini, "${kayit.medyaKimligi}.$uzanti")
                     sifreliDepo.coz(sifreliDosya, acikDosya)
-                    konum = acikDosya.toURI().toString()
+                    require(acikDosya.isFile && acikDosya.length() > 0L) {
+                        "Video çözüldü ancak oynatılabilir dosya oluşturulamadı"
+                    }
+                    konum = Uri.fromFile(acikDosya).toString()
                     gecici = true
                 } else {
-                    konum = kayit.etkinMedyaKonumu
-                    require(konum.isNotBlank()) { "Açık medya konumu bulunamadı" }
+                    val hamKonum = kayit.etkinMedyaKonumu
+                    require(hamKonum.isNotBlank()) { "Açık medya konumu bulunamadı" }
+                    val uri = konumuUriyeCevir(hamKonum)
+                    acikKaynakDogrula(uri)
+                    konum = uri.toString()
                     gecici = false
                 }
 
@@ -349,12 +366,54 @@ class AndroidUygulamaDenetleyicisi(
                     .putExtra(OynaticiEtkinligi.EK_MEDYA_KONUMU, konum)
                     .putExtra(OynaticiEtkinligi.EK_BASLIK, kayit.baslik)
                     .putExtra(OynaticiEtkinligi.EK_GECICI_DOSYA, gecici)
+                    .putExtra(OynaticiEtkinligi.EK_ASIL_UZANTI, guvenliUzanti(kayit.asilUzanti))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                uygulama.startActivity(intent)
-            }.onFailure { hata ->
+
+                withContext(Dispatchers.Main.immediate) {
+                    uygulama.startActivity(intent)
+                }
+                bilgiGoster("Oynatıcı açıldı.")
+            } catch (hata: Throwable) {
+                olusturulanGeciciDizin?.deleteRecursively()
                 hataGoster("İçerik oynatılamadı: ${hata.anlasilirMesaj()}")
             }
         }
+    }
+
+    private fun konumuUriyeCevir(konum: String): Uri {
+        val ayrisitirilmis = Uri.parse(konum)
+        if (!ayrisitirilmis.scheme.isNullOrBlank()) return ayrisitirilmis
+        return Uri.fromFile(File(konum))
+    }
+
+    private fun acikKaynakDogrula(uri: Uri) {
+        when (uri.scheme?.lowercase()) {
+            "file" -> {
+                val dosya = uri.path?.let(::File)
+                require(dosya?.isFile == true && dosya.length() > 0L) { "Açık medya dosyası bulunamadı veya boş" }
+            }
+            "content" -> {
+                val erisilebilir = uygulama.contentResolver.openAssetFileDescriptor(uri, "r")?.use { tanimlayici ->
+                    tanimlayici.length != 0L
+                } == true
+                require(erisilebilir) { "Android medya dosyasına erişim izni bulunamadı" }
+            }
+            else -> error("Desteklenmeyen medya konumu: ${uri.scheme ?: "şemasız"}")
+        }
+    }
+
+    private fun eskiOynatmaDosyalariniTemizle() {
+        val kok = File(uygulama.filesDir, OYNATMA_GECICI_KLASORU)
+        if (!kok.isDirectory) return
+        val simdi = System.currentTimeMillis()
+        kok.listFiles().orEmpty()
+            .filter { simdi - it.lastModified() > OYNATMA_GECICI_OMRU_MILLIS }
+            .forEach(File::deleteRecursively)
+    }
+
+    private fun guvenliUzanti(uzanti: String): String {
+        val temiz = uzanti.trim().removePrefix(".").lowercase()
+        return temiz.takeIf { it.length in 2..8 && it.all(Char::isLetterOrDigit) } ?: "mkv"
     }
 
     override fun medyayiSil(medyaKimligi: String) {
@@ -473,9 +532,11 @@ class AndroidUygulamaDenetleyicisi(
     private fun sesDonusumAdi(uzanti: String): String = if (uzanti == "ogg") "vorbis" else uzanti
 
     private fun Throwable.anlasilirMesaj(): String =
-        message?.lineSequence()?.firstOrNull { it.isNotBlank() }?.take(320) ?: javaClass.simpleName
+        message?.lineSequence()?.firstOrNull { it.isNotBlank() }?.take(500) ?: javaClass.simpleName
 
     companion object {
+        private const val OYNATMA_GECICI_KLASORU = "oynatma-gecici"
+        private const val OYNATMA_GECICI_OMRU_MILLIS = 24L * 60L * 60L * 1000L
         private val HIZ_DESENI = Regex("at\\s+([^\\s]+/s)")
         private val YAN_DOSYA_UZANTILARI = setOf(
             "json", "jpg", "jpeg", "png", "webp", "vtt", "srt", "ass", "lrc", "part", "ytdl", "description",

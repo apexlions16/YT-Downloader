@@ -1,4 +1,4 @@
-name: Bmobil ve BPC 0.3.0 Derlemesi
+name: Bmobil 0.3.1 Android Oynatma Hotfix
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: bmobil-bpc-0-3-0-${{ github.ref }}
+  group: bmobil-0-3-1-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   android-uygulamalarini-derle:
-    name: Bmobil APK paketlerini oluştur
+    name: Bmobil 0.3.1 APK paketlerini oluştur
     runs-on: ubuntu-latest
     steps:
       - name: Kaynak kodu al
@@ -37,28 +37,34 @@ jobs:
         with:
           gradle-version: "8.14.2"
 
-      - name: Bmobil ve Bmobil Developer APK'larını derle
+      - name: Android testlerini ve iki APK'yı derle
         id: android-derleme
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
-          gradle :sharedUI:allTests :androidApp:assembleNormalRelease :androidApp:assembleDeveloperRelease --stacktrace --console=plain 2>&1 | tee android-derleme.log
+          gradle \
+            :sharedUI:allTests \
+            :androidApp:testNormalReleaseUnitTest \
+            :androidApp:testDeveloperReleaseUnitTest \
+            :androidApp:assembleNormalRelease \
+            :androidApp:assembleDeveloperRelease \
+            --stacktrace --console=plain 2>&1 | tee android-derleme.log
 
       - name: Android paketlerini adlandır
         if: steps.android-derleme.outcome == 'success'
         shell: bash
         run: |
           mkdir -p dagitim/android
-          cp androidApp/build/outputs/apk/normal/release/*.apk dagitim/android/Bmobil-0.3.0.apk
-          cp androidApp/build/outputs/apk/developer/release/*.apk dagitim/android/Bmobil-Developer-0.3.0.apk
+          cp androidApp/build/outputs/apk/normal/release/*.apk dagitim/android/Bmobil-0.3.1.apk
+          cp androidApp/build/outputs/apk/developer/release/*.apk dagitim/android/Bmobil-Developer-0.3.1.apk
           sha256sum dagitim/android/* | tee android-sha256.txt
 
       - name: Android derleme günlüğünü yükle
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Android-Derleme-Gunlugu-0.3.0
+          name: Android-Derleme-Gunlugu-0.3.1
           path: |
             android-derleme.log
             android-sha256.txt
@@ -68,142 +74,79 @@ jobs:
         if: steps.android-derleme.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: Bmobil-0.3.0
-          path: dagitim/android/Bmobil-0.3.0.apk
+          name: Bmobil-0.3.1
+          path: dagitim/android/Bmobil-0.3.1.apk
           if-no-files-found: error
 
       - name: Bmobil Developer paketini yükle
         if: steps.android-derleme.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: Bmobil-Developer-0.3.0
-          path: dagitim/android/Bmobil-Developer-0.3.0.apk
+          name: Bmobil-Developer-0.3.1
+          path: dagitim/android/Bmobil-Developer-0.3.1.apk
           if-no-files-found: error
 
       - name: Android derleme sonucunu doğrula
         if: steps.android-derleme.outcome == 'failure'
         shell: bash
         run: |
-          echo "Android derlemesi başarısız oldu. Türkçe günlük artefakt olarak yüklendi."
+          echo "Android 0.3.1 derlemesi başarısız oldu. Türkçe günlük artefakt olarak yüklendi."
           exit 1
 
-  windows-uygulamalarini-derle:
-    name: BPC MSI ve EXE paketlerini oluştur
-    runs-on: windows-latest
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  pr-ci-sonucunu-kaydet:
+    name: PR CI sonucunu dala kaydet
+    if: always() && github.event_name == 'pull_request'
+    needs:
+      - android-uygulamalarini-derle
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Kaynak kodu al
+      - name: PR dalını al
         uses: actions/checkout@v4
-
-      - name: JDK 17 kur
-        uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: "17"
+          ref: ${{ github.head_ref }}
 
-      - name: Gradle 8.14.2 kur
-        uses: gradle/actions/setup-gradle@v4
+      - name: Android derleme günlüğünü al
+        uses: actions/download-artifact@v4
         with:
-          gradle-version: "8.14.2"
+          name: Android-Derleme-Gunlugu-0.3.1
+          path: ci-gunluk
 
-      - name: Windows motor bileşenlerini indir ve doğrula
-        id: motor-hazirla
-        shell: pwsh
+      - name: Sonucu okunabilir dosyaya yaz
+        shell: bash
         run: |
-          ./scripts/windows-motor-hazirla.ps1 -GunlukYolu windows-motor.log
+          mkdir -p ci
+          {
+            echo "run_id=${{ github.run_id }}"
+            echo "run_url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "result=${{ needs.android-uygulamalarini-derle.result }}"
+            echo "commit=${{ github.event.pull_request.head.sha }}"
+            echo
+            echo "===== android-derleme.log son 160 satır ====="
+            tail -n 160 ci-gunluk/android-derleme.log 2>/dev/null || true
+            echo
+            echo "===== SHA-256 ====="
+            cat ci-gunluk/android-sha256.txt 2>/dev/null || true
+          } > ci/android-0.3.1-status.txt
 
-      - name: Windows motor günlüğünü yükle
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Windows-Motor-Gunlugu-0.3.0
-          path: |
-            windows-motor.log
-            windows-motor-sha256.txt
-          if-no-files-found: warn
-
-      - name: BPC ve BPC Developer paketlerini derle
-        id: windows-derleme
-        continue-on-error: true
-        shell: pwsh
+      - name: CI sonucunu PR dalına işle
+        shell: bash
         run: |
-          $ErrorActionPreference = "Continue"
-          & gradle :desktopApp:test :desktopApp:packageMsi :desktopApp:packageExe --stacktrace --console=plain *>&1 | Tee-Object -FilePath windows-normal-derleme.log
-          $normalKod = $LASTEXITCODE
-          & gradle :desktopApp:packageMsi :desktopApp:packageExe -PdeveloperSurumu=true --stacktrace --console=plain *>&1 | Tee-Object -FilePath windows-developer-derleme.log
-          $developerKod = $LASTEXITCODE
-          if ($normalKod -ne 0 -or $developerKod -ne 0) { exit 1 }
-
-      - name: Windows paketlerini adlandır
-        if: steps.windows-derleme.outcome == 'success'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path "dagitim/windows" | Out-Null
-          Copy-Item (Get-ChildItem "desktopApp/build/normal/compose/binaries/main/msi" -Filter *.msi | Select-Object -First 1).FullName "dagitim/windows/BPC-0.3.0.msi"
-          Copy-Item (Get-ChildItem "desktopApp/build/normal/compose/binaries/main/exe" -Filter *.exe | Select-Object -First 1).FullName "dagitim/windows/BPC-0.3.0.exe"
-          Copy-Item (Get-ChildItem "desktopApp/build/developer/compose/binaries/main/msi" -Filter *.msi | Select-Object -First 1).FullName "dagitim/windows/BPC-Developer-0.3.0.msi"
-          Copy-Item (Get-ChildItem "desktopApp/build/developer/compose/binaries/main/exe" -Filter *.exe | Select-Object -First 1).FullName "dagitim/windows/BPC-Developer-0.3.0.exe"
-          Get-ChildItem "dagitim/windows" | ForEach-Object {
-            "$($_.Name) $((Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant())"
-          } | Set-Content -Encoding UTF8 windows-sha256.txt
-
-      - name: Windows derleme günlüklerini yükle
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Windows-Derleme-Gunlugu-0.3.0
-          path: |
-            windows-normal-derleme.log
-            windows-developer-derleme.log
-            windows-sha256.txt
-          if-no-files-found: warn
-
-      - name: BPC MSI paketini yükle
-        if: steps.windows-derleme.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: BPC-MSI-0.3.0
-          path: dagitim/windows/BPC-0.3.0.msi
-          if-no-files-found: error
-
-      - name: BPC EXE paketini yükle
-        if: steps.windows-derleme.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: BPC-EXE-0.3.0
-          path: dagitim/windows/BPC-0.3.0.exe
-          if-no-files-found: error
-
-      - name: BPC Developer MSI paketini yükle
-        if: steps.windows-derleme.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: BPC-Developer-MSI-0.3.0
-          path: dagitim/windows/BPC-Developer-0.3.0.msi
-          if-no-files-found: error
-
-      - name: BPC Developer EXE paketini yükle
-        if: steps.windows-derleme.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: BPC-Developer-EXE-0.3.0
-          path: dagitim/windows/BPC-Developer-0.3.0.exe
-          if-no-files-found: error
-
-      - name: Windows derleme sonucunu doğrula
-        if: steps.windows-derleme.outcome == 'failure'
-        shell: pwsh
-        run: |
-          Write-Host "Windows derlemesi başarısız oldu. Türkçe günlüklar artefakt olarak yüklendi."
-          exit 1
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci/android-0.3.1-status.txt
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Android CI sonucunu kaydet [skip ci]"
+          git push origin "HEAD:${{ github.head_ref }}"
 
   github-release-olustur:
-    name: GitHub Release oluştur
+    name: Bmobil 0.3.1 GitHub Release oluştur
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs:
       - android-uygulamalarini-derle
-      - windows-uygulamalarini-derle
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -212,37 +155,13 @@ jobs:
       - name: Bmobil paketini al
         uses: actions/download-artifact@v4
         with:
-          name: Bmobil-0.3.0
+          name: Bmobil-0.3.1
           path: release
 
       - name: Bmobil Developer paketini al
         uses: actions/download-artifact@v4
         with:
-          name: Bmobil-Developer-0.3.0
-          path: release
-
-      - name: BPC MSI paketini al
-        uses: actions/download-artifact@v4
-        with:
-          name: BPC-MSI-0.3.0
-          path: release
-
-      - name: BPC EXE paketini al
-        uses: actions/download-artifact@v4
-        with:
-          name: BPC-EXE-0.3.0
-          path: release
-
-      - name: BPC Developer MSI paketini al
-        uses: actions/download-artifact@v4
-        with:
-          name: BPC-Developer-MSI-0.3.0
-          path: release
-
-      - name: BPC Developer EXE paketini al
-        uses: actions/download-artifact@v4
-        with:
-          name: BPC-Developer-EXE-0.3.0
+          name: Bmobil-Developer-0.3.1
           path: release
 
       - name: SHA-256 listesi oluştur
@@ -251,30 +170,27 @@ jobs:
           cd release
           sha256sum * | tee SHA256SUMS.txt
 
-      - name: Bmobil ve BPC 0.3.0 sürümünü yayımla
+      - name: Bmobil 0.3.1 sürümünü yayımla
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.3.0
-          name: Bmobil ve BPC 0.3.0
+          tag_name: v0.3.1
+          name: Bmobil 0.3.1 Android Oynatma Hotfix
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
           generate_release_notes: true
           body: |
-            ## Bmobil ve BPC 0.3.0
+            ## Bmobil 0.3.1 Android Oynatma Hotfix
 
-            - Android ve Windows oynatıcıları düzeltildi.
-            - İndirilen ses/dublaj ve altyazı parçaları oynatıcıdan seçilebilir.
-            - Windows motorları kurulum paketine gömüldü; ilk indirme ağ tabanlı kuruluma bağlı değildir.
-            - Bmobil ve BPC şifreli kütüphane sürümleridir.
-            - Bmobil Developer ve BPC Developer dosyaları normal depolamaya açık biçimde kaydeder.
+            - Şifreli videolar oynatma öncesinde güvenli geçici dosyaya hazırlanır ve hazırlık durumu görünür.
+            - Oynatıcı yalnızca Android ana iş parçacığından açılır.
+            - Yerel dosya ve MediaStore URI doğrulaması eklendi.
+            - Media3 yerel medya kaynağı ve ayrıntılı hata ekranı eklendi.
+            - Android için H.264/AAC uyumlu indirme seçimi önceliklendirildi.
+            - Bmobil ve Bmobil Developer APK'ları dahildir.
           files: |
-            release/Bmobil-0.3.0.apk
-            release/Bmobil-Developer-0.3.0.apk
-            release/BPC-0.3.0.msi
-            release/BPC-0.3.0.exe
-            release/BPC-Developer-0.3.0.msi
-            release/BPC-Developer-0.3.0.exe
+            release/Bmobil-0.3.1.apk
+            release/Bmobil-Developer-0.3.1.apk
             release/SHA256SUMS.txt
           fail_on_unmatched_files: true
 
@@ -283,4 +199,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh issue comment 3 --body "✅ **Bmobil ve BPC 0.3.0 Release yayımlandı.**\n\nAltı kurulum paketi ve SHA-256 listesi: https://github.com/${{ github.repository }}/releases/tag/v0.3.0\n\nAna dal Action çalışması: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          gh issue comment 6 --body "✅ **Bmobil 0.3.1 Android oynatma hotfix Release yayımlandı.**\n\nİki APK ve SHA-256 listesi: https://github.com/${{ github.repository }}/releases/tag/v0.3.1\n\nAna dal Action çalışması: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
