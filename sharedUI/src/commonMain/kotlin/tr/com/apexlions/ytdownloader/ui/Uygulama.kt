@@ -42,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import tr.com.apexlions.ytdownloader.model.AltyaziSecenegi
 import tr.com.apexlions.ytdownloader.model.AnalizSonucu
 import tr.com.apexlions.ytdownloader.model.DepolamaHedefi
 import tr.com.apexlions.ytdownloader.model.IndirmeDurumu
@@ -51,6 +52,7 @@ import tr.com.apexlions.ytdownloader.model.IcerikTuru
 import tr.com.apexlions.ytdownloader.model.KanalProfili
 import tr.com.apexlions.ytdownloader.model.KutuphaneKaydi
 import tr.com.apexlions.ytdownloader.model.PlatformBilgisi
+import tr.com.apexlions.ytdownloader.model.SesParcasiSecenegi
 import tr.com.apexlions.ytdownloader.model.TurboProfili
 import tr.com.apexlions.ytdownloader.model.UygulamaDenetleyicisi
 import tr.com.apexlions.ytdownloader.model.UygulamaSekmesi
@@ -77,17 +79,19 @@ fun YTIndiriciUygulamasi(
         }
     }
 
-    MaterialTheme(colorScheme = darkColorScheme(
-        primary = Kirmizi,
-        onPrimary = Color.White,
-        background = KoyuZemin,
-        surface = KartZemini,
-        onBackground = Color.White,
-        onSurface = Color.White,
-    )) {
+    MaterialTheme(
+        colorScheme = darkColorScheme(
+            primary = Kirmizi,
+            onPrimary = Color.White,
+            background = KoyuZemin,
+            surface = KartZemini,
+            onBackground = Color.White,
+            onSurface = Color.White,
+        ),
+    ) {
         Surface(modifier = Modifier.fillMaxSize(), color = KoyuZemin) {
             Column(Modifier.fillMaxSize()) {
-                UstAlan(platform.ad, durum.ytDlpSurumu)
+                UstAlan(platform, durum.ytDlpSurumu)
                 Sekmeler(durum.seciliSekme, denetleyici::sekmeSec)
 
                 Box(Modifier.fillMaxWidth().weight(1f)) {
@@ -97,9 +101,13 @@ fun YTIndiriciUygulamasi(
                             analizEdiliyor = durum.analizEdiliyor,
                             analiz = durum.analizSonucu,
                             seciliSecenekKimligi = durum.seciliSecenekKimligi,
+                            seciliSesler = durum.seciliSesParcasiKimlikleri,
+                            seciliAltyazilar = durum.seciliAltyaziDilleri,
                             baglantiDegisti = denetleyici::baglantiyiDegistir,
                             analizEt = denetleyici::analizEt,
                             secenekSec = denetleyici::secenekSec,
+                            sesSec = denetleyici::sesParcasiSec,
+                            altyaziSec = denetleyici::altyaziSec,
                             indir = denetleyici::indirmeyiBaslat,
                         )
                         UygulamaSekmesi.INDIRMELER -> IndirmelerEkrani(
@@ -124,19 +132,15 @@ fun YTIndiriciUygulamasi(
                     }
                 }
 
-                durum.hataMesaji?.let {
-                    MesajKarti(it, hata = true, kapat = denetleyici::mesajlariTemizle)
-                }
-                durum.bilgiMesaji?.let {
-                    MesajKarti(it, hata = false, kapat = denetleyici::mesajlariTemizle)
-                }
+                durum.hataMesaji?.let { MesajKarti(it, true, denetleyici::mesajlariTemizle) }
+                durum.bilgiMesaji?.let { MesajKarti(it, false, denetleyici::mesajlariTemizle) }
             }
         }
     }
 }
 
 @Composable
-private fun UstAlan(platformAdi: String, ytDlpSurumu: String?) {
+private fun UstAlan(platform: PlatformBilgisi, ytDlpSurumu: String?) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -144,8 +148,12 @@ private fun UstAlan(platformAdi: String, ytDlpSurumu: String?) {
     ) {
         HizliOynatIkonu()
         Column(Modifier.weight(1f)) {
-            Text("YT İndirici", fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
-            Text("$platformAdi • Hız odaklı • Tamamen Türkçe", color = IkincilMetin, fontSize = 12.sp)
+            Text(platform.ad, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
+            Text(
+                if (platform.developerSurumu) "Developer • Açık dosya • Tamamen Türkçe" else "Şifreli kütüphane • Tamamen Türkçe",
+                color = if (platform.developerSurumu) Uyari else IkincilMetin,
+                fontSize = 12.sp,
+            )
         }
         Text(
             ytDlpSurumu?.let { "yt-dlp $it" } ?: "Motor hazırlanıyor",
@@ -158,10 +166,7 @@ private fun UstAlan(platformAdi: String, ytDlpSurumu: String?) {
 
 @Composable
 private fun Sekmeler(secili: UygulamaSekmesi, sec: (UygulamaSekmesi) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         UygulamaSekmesi.entries.forEach { sekme ->
             FilterChip(
                 selected = sekme == secili,
@@ -178,9 +183,13 @@ private fun IndirEkrani(
     analizEdiliyor: Boolean,
     analiz: AnalizSonucu?,
     seciliSecenekKimligi: String?,
+    seciliSesler: Set<String>,
+    seciliAltyazilar: Set<String>,
     baglantiDegisti: (String) -> Unit,
     analizEt: () -> Unit,
     secenekSec: (String) -> Unit,
+    sesSec: (String, Boolean) -> Unit,
+    altyaziSec: (String, Boolean) -> Unit,
     indir: () -> Unit,
 ) {
     LazyColumn(
@@ -221,6 +230,7 @@ private fun IndirEkrani(
             item { AnalizKarti(sonuc) }
             val videoSecenekleri = sonuc.secenekler.filter { it.tur == IcerikTuru.VIDEO }
             val sesSecenekleri = sonuc.secenekler.filter { it.tur == IcerikTuru.SES }
+            val videoSecili = videoSecenekleri.any { it.kimlik == seciliSecenekKimligi }
 
             if (videoSecenekleri.isNotEmpty()) {
                 item { BolumBasligi("Video seçenekleri", "${videoSecenekleri.size} seçenek") }
@@ -228,12 +238,33 @@ private fun IndirEkrani(
                     SecenekKarti(secenek, secenek.kimlik == seciliSecenekKimligi) { secenekSec(secenek.kimlik) }
                 }
             }
+
+            if (videoSecili && sonuc.sesParcalari.isNotEmpty()) {
+                item { EkParcaBilgisi() }
+                item { BolumBasligi("Dublaj ve ses parçaları", "${seciliSesler.size} seçili") }
+                items(sonuc.sesParcalari, key = { "ses-${it.formatKimligi}" }) { parca ->
+                    SesParcasiKarti(parca, parca.formatKimligi in seciliSesler) { secili ->
+                        sesSec(parca.formatKimligi, secili)
+                    }
+                }
+            }
+
+            if (videoSecili && sonuc.altyazilar.isNotEmpty()) {
+                item { BolumBasligi("Altyazılar", "${seciliAltyazilar.size} seçili") }
+                items(sonuc.altyazilar, key = { "altyazi-${it.dilKodu}-${it.otomatik}" }) { altyazi ->
+                    AltyaziKarti(altyazi, altyazi.dilKodu in seciliAltyazilar) { secili ->
+                        altyaziSec(altyazi.dilKodu, secili)
+                    }
+                }
+            }
+
             if (sesSecenekleri.isNotEmpty()) {
-                item { BolumBasligi("Ses seçenekleri", "${sesSecenekleri.size} seçenek") }
+                item { BolumBasligi("Yalnızca ses seçenekleri", "${sesSecenekleri.size} seçenek") }
                 items(sesSecenekleri, key = { it.kimlik }) { secenek ->
                     SecenekKarti(secenek, secenek.kimlik == seciliSecenekKimligi) { secenekSec(secenek.kimlik) }
                 }
             }
+
             item {
                 Button(
                     onClick = indir,
@@ -254,7 +285,61 @@ private fun AnalizKarti(sonuc: AnalizSonucu) {
             Text(sonuc.baslik, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold)
             Text(sonuc.kanalAdi, color = Basari, fontWeight = FontWeight.Bold)
             Text("${sureMetni(sonuc.sureSaniye)} • ${sonuc.yayinTarihi ?: "Tarih bilinmiyor"}", color = IkincilMetin, fontSize = 12.sp)
-            Text("Kapak ve metadata indirmeyle birlikte kütüphaneye kaydedilecek.", color = IkincilMetin, fontSize = 12.sp)
+            Text(
+                "${sonuc.sesParcalari.size} ses parçası • ${sonuc.altyazilar.size} altyazı dili bulundu",
+                color = IkincilMetin,
+                fontSize = 12.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun EkParcaBilgisi() {
+    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF2B2410)), shape = RoundedCornerShape(16.dp)) {
+        Text(
+            "Seçtiğin ses ve altyazılar videoya gömülür. Oynatıcıdaki Ses ve Altyazı düğmelerinden anında değiştirebilirsin. Birden fazla parça seçildiğinde çıktı MKV olur.",
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            color = Uyari,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun SesParcasiKarti(parca: SesParcasiSecenegi, secili: Boolean, degistir: (Boolean) -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable { degistir(!secili) },
+        colors = CardDefaults.cardColors(containerColor = if (secili) Color(0xFF152E22) else KartZemini),
+        shape = RoundedCornerShape(15.dp),
+    ) {
+        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(parca.gorunenAd, fontWeight = FontWeight.Bold)
+                Text(
+                    listOfNotNull(parca.dilKodu, parca.kodek, parca.bitHiziKbps?.let { "$it kbps" }).joinToString(" • ").ifBlank { "Ses parçası" },
+                    color = IkincilMetin,
+                    fontSize = 11.sp,
+                )
+            }
+            Text(if (secili) "İndirilecek" else "Ekle", color = if (secili) Basari else IkincilMetin)
+        }
+    }
+}
+
+@Composable
+private fun AltyaziKarti(altyazi: AltyaziSecenegi, secili: Boolean, degistir: (Boolean) -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable { degistir(!secili) },
+        colors = CardDefaults.cardColors(containerColor = if (secili) Color(0xFF1A2940) else KartZemini),
+        shape = RoundedCornerShape(15.dp),
+    ) {
+        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(altyazi.gorunenAd, fontWeight = FontWeight.Bold)
+                Text(if (altyazi.otomatik) "Otomatik oluşturulan altyazı" else "Yayıncı altyazısı", color = IkincilMetin, fontSize = 11.sp)
+            }
+            Text(if (secili) "İndirilecek" else "Ekle", color = if (secili) Basari else IkincilMetin)
         }
     }
 }
@@ -278,13 +363,7 @@ private fun SecenekKarti(secenek: IndirmeSecenegi, secili: Boolean, sec: () -> U
                     secenek.sesKodegi?.takeIf { it != "none" }?.let(::add)
                     secenek.tahminiBoyutBayt?.takeIf { it > 0 }?.let { add(it.okunabilirBoyut()) }
                 }.joinToString(" • ")
-                Text(
-                    ayrinti.ifBlank { "Boyut indirme sırasında kesinleşir" },
-                    color = IkincilMetin,
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Text(ayrinti.ifBlank { "Boyut indirme sırasında kesinleşir" }, color = IkincilMetin, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Text(if (secili) "Seçildi" else "Seç", color = if (secili) Kirmizi else IkincilMetin)
         }
@@ -363,8 +442,15 @@ private fun KutuphaneKarti(kayit: KutuphaneKaydi, oynat: (String) -> Unit, sil: 
                 color = IkincilMetin,
                 fontSize = 11.sp,
             )
+            if (kayit.sesParcalari.isNotEmpty() || kayit.altyaziParcalari.isNotEmpty()) {
+                Text(
+                    "${kayit.sesParcalari.size} ses • ${kayit.altyaziParcalari.size} altyazı • ${if (kayit.sifreli) "Şifreli" else "Açık dosya"}",
+                    color = if (kayit.sifreli) Basari else Uyari,
+                    fontSize = 11.sp,
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { oynat(kayit.medyaKimligi) }) { Text("Uygulamada oynat") }
+                Button(onClick = { oynat(kayit.medyaKimligi) }) { Text("Oynat") }
                 OutlinedButton(onClick = { sil(kayit.medyaKimligi) }) { Text("Sil") }
             }
         }
@@ -387,7 +473,7 @@ private fun AyarlarEkrani(
             Card(colors = CardDefaults.cardColors(containerColor = KartZemini), shape = RoundedCornerShape(18.dp)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Eşzamanlı parça profili", fontWeight = FontWeight.Bold)
-                    Text("Otomatik profil Wi‑Fi, mobil veri, bellek ve işlemci durumuna göre 4–16 parça seçer.", color = IkincilMetin, fontSize = 12.sp)
+                    Text("Otomatik profil bağlantı ve cihaz durumuna göre 4–16 parça seçer.", color = IkincilMetin, fontSize = 12.sp)
                     TurboProfili.entries.forEach { profil ->
                         FilterChip(
                             selected = profil == turboProfili,
@@ -406,7 +492,13 @@ private fun AyarlarEkrani(
                     if (platform.diskSecimiDestekleniyor) {
                         diskler.forEach { disk -> DiskKarti(disk, disk.kokYolu == seciliDiskYolu) { diskSec(disk.kokYolu) } }
                     } else {
-                        Text("Medya normal İndirilenler klasörüne çıkmaz; uygulamanın özel ve şifreli kütüphanesinde tutulur.", color = Basari, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                        Text(
+                            if (platform.developerSurumu) "Medya, cihazın İndirilenler/Bmobil Developer klasörüne açık dosya olarak yazılır."
+                            else "Medya normal İndirilenler klasörüne çıkmaz; uygulamanın özel ve şifreli kütüphanesinde tutulur.",
+                            color = if (platform.developerSurumu) Uyari else Basari,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp,
+                        )
                     }
                 }
             }
@@ -471,29 +563,28 @@ private fun MesajKarti(metin: String, hata: Boolean, kapat: () -> Unit) {
 private fun HizliOynatIkonu() {
     Canvas(Modifier.size(50.dp)) {
         drawRoundRect(Kirmizi, cornerRadius = CornerRadius(size.width * .25f, size.height * .25f))
-        drawPath(Path().apply {
-            moveTo(size.width * .32f, size.height * .24f)
-            lineTo(size.width * .72f, size.height * .50f)
-            lineTo(size.width * .32f, size.height * .76f)
-            close()
-        }, Color.White)
-        drawPath(Path().apply {
-            moveTo(size.width * .60f, size.height * .12f)
-            lineTo(size.width * .49f, size.height * .42f)
-            lineTo(size.width * .62f, size.height * .42f)
-            lineTo(size.width * .50f, size.height * .75f)
-            lineTo(size.width * .78f, size.height * .36f)
-            lineTo(size.width * .64f, size.height * .36f)
-            close()
-        }, Uyari)
+        drawPath(
+            Path().apply {
+                moveTo(size.width * .32f, size.height * .24f)
+                lineTo(size.width * .72f, size.height * .50f)
+                lineTo(size.width * .32f, size.height * .76f)
+                close()
+            },
+            Color.White,
+        )
+        drawPath(
+            Path().apply {
+                moveTo(size.width * .60f, size.height * .12f)
+                lineTo(size.width * .49f, size.height * .42f)
+                lineTo(size.width * .62f, size.height * .42f)
+                lineTo(size.width * .50f, size.height * .75f)
+                lineTo(size.width * .78f, size.height * .36f)
+                lineTo(size.width * .64f, size.height * .36f)
+                close()
+            },
+            Uyari,
+        )
     }
-}
-
-private fun sureMetni(saniye: Long): String {
-    val saat = saniye / 3600
-    val dakika = (saniye % 3600) / 60
-    val kalan = saniye % 60
-    return if (saat > 0) "%d:%02d:%02d".format(saat, dakika, kalan) else "%02d:%02d".format(dakika, kalan)
 }
 
 private fun durumMetni(durum: IndirmeDurumu): String = when (durum) {
@@ -501,7 +592,16 @@ private fun durumMetni(durum: IndirmeDurumu): String = when (durum) {
     IndirmeDurumu.INDIRILIYOR -> "İndiriliyor"
     IndirmeDurumu.ISLENIYOR -> "Birleştiriliyor"
     IndirmeDurumu.SIFRELENIYOR -> "Şifreleniyor"
+    IndirmeDurumu.DISARI_AKTARILIYOR -> "Dış depolamaya aktarılıyor"
     IndirmeDurumu.TAMAMLANDI -> "Tamamlandı"
     IndirmeDurumu.IPTAL_EDILDI -> "İptal edildi"
     IndirmeDurumu.HATA -> "Hata"
+}
+
+private fun sureMetni(saniye: Long): String {
+    if (saniye <= 0) return "Süre bilinmiyor"
+    val saat = saniye / 3600
+    val dakika = (saniye % 3600) / 60
+    val kalan = saniye % 60
+    return if (saat > 0) "%d:%02d:%02d".format(saat, dakika, kalan) else "%02d:%02d".format(dakika, kalan)
 }
