@@ -19,14 +19,21 @@ try {
     New-Item -ItemType Directory -Force -Path $motor, $gecici | Out-Null
 
     Write-Host "[1/4] yt-dlp Nightly indiriliyor ve doğrulanıyor..."
+    $ytSurum = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/yt-dlp/yt-dlp-nightly-builds/releases/latest"
+    $ytVarlik = $ytSurum.assets | Where-Object { $_.name -eq "yt-dlp.exe" } | Select-Object -First 1
+    if (-not $ytVarlik) { throw "Nightly sürümünde yt-dlp.exe varlığı bulunamadı" }
     $ytDlp = Join-Path $motor "yt-dlp.exe"
-    Invoke-WebRequest -Headers $headers -Uri "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.exe" -OutFile $ytDlp
-    $toplamMetni = (Invoke-WebRequest -Headers $headers -Uri "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/SHA2-256SUMS").Content
-    $toplamSatiri = ($toplamMetni -split "`r?`n") | Where-Object { $_ -match "\syt-dlp\.exe\s*$" } | Select-Object -First 1
-    if ([string]::IsNullOrWhiteSpace($toplamSatiri)) { throw "SHA2-256SUMS içinde yt-dlp.exe bulunamadı" }
-    $beklenen = ($toplamSatiri.Trim() -split "\s+")[0].ToLowerInvariant()
-    $gercek = (Get-FileHash -Algorithm SHA256 $ytDlp).Hash.ToLowerInvariant()
-    if ($gercek -ne $beklenen) { throw "yt-dlp SHA-256 doğrulaması başarısız: beklenen=$beklenen gerçek=$gercek" }
+    Invoke-WebRequest -Headers $headers -Uri $ytVarlik.browser_download_url -OutFile $ytDlp
+    if ($ytVarlik.digest -and $ytVarlik.digest.StartsWith("sha256:")) {
+        $beklenen = $ytVarlik.digest.Substring(7).ToLowerInvariant()
+        $gercek = (Get-FileHash -Algorithm SHA256 $ytDlp).Hash.ToLowerInvariant()
+        if ($gercek -ne $beklenen) { throw "yt-dlp SHA-256 doğrulaması başarısız: beklenen=$beklenen gerçek=$gercek" }
+    } else {
+        Write-Host "GitHub digest alanı bulunamadı; dosya boyutu ve PE başlığı denetleniyor."
+        if ((Get-Item $ytDlp).Length -lt 1MB) { throw "yt-dlp.exe beklenenden küçük" }
+        $ilkIki = [System.IO.File]::ReadAllBytes($ytDlp)[0..1]
+        if ($ilkIki[0] -ne 0x4D -or $ilkIki[1] -ne 0x5A) { throw "yt-dlp.exe geçerli Windows PE dosyası değil" }
+    }
 
     Write-Host "[2/4] FFmpeg ve FFprobe indiriliyor..."
     $ffSurum = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/yt-dlp/FFmpeg-Builds/releases/latest"
@@ -59,6 +66,11 @@ try {
     if (-not $denoVarlik) { throw "Deno Windows paketi bulunamadı" }
     $denoArsiv = Join-Path $gecici $denoVarlik.name
     Invoke-WebRequest -Headers $headers -Uri $denoVarlik.browser_download_url -OutFile $denoArsiv
+    if ($denoVarlik.digest -and $denoVarlik.digest.StartsWith("sha256:")) {
+        $beklenenDeno = $denoVarlik.digest.Substring(7).ToLowerInvariant()
+        $gercekDeno = (Get-FileHash -Algorithm SHA256 $denoArsiv).Hash.ToLowerInvariant()
+        if ($gercekDeno -ne $beklenenDeno) { throw "Deno SHA-256 doğrulaması başarısız" }
+    }
     $denoCikarma = Join-Path $gecici "deno"
     Expand-Archive -Path $denoArsiv -DestinationPath $denoCikarma -Force
     $denoDosyasi = Get-ChildItem $denoCikarma -Recurse -Filter deno.exe | Select-Object -First 1
@@ -108,6 +120,11 @@ try {
     } | Set-Content -Encoding UTF8 windows-motor-sha256.txt
 
     Write-Host "Windows motor paketi hazır: $hedefArsiv"
+}
+catch {
+    $_ | Format-List * -Force | Out-File -FilePath windows-motor-hata.txt -Encoding utf8
+    Write-Error $_
+    exit 1
 }
 finally {
     Stop-Transcript | Out-Null
